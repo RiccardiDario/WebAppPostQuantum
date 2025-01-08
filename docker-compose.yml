@@ -4,13 +4,13 @@ services:
     container_name: cert-generator
     volumes:
       - ./nginx/certs:/nginx/certs
-      - ./generate_certs.sh:/generate_certs.sh
-      - ./openssl.cnf:/openssl.cnf
+      - ./utils/generate_certs.sh:/generate_certs.sh
+      - ./utils/openssl.cnf:/openssl.cnf
     stdin_open: true
     tty: true
     entrypoint: ["/bin/sh", "/generate_certs.sh"]
-    environment:
-      - VERIFY_CERTS=${VERIFY_CERTS}
+    env_file:
+      - ./utils/.env
 
   app:
     build:
