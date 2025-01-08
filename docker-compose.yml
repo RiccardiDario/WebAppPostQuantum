@@ -3,7 +3,7 @@ services:
     image: openquantumsafe/oqs-ossl3:latest
     container_name: cert-generator
     volumes:
-      - ./certs:/certs
+      - ./nginx/certs:/nginx/certs
       - ./generate_certs.sh:/generate_certs.sh
       - ./openssl.cnf:/openssl.cnf
     stdin_open: true
@@ -11,6 +11,7 @@ services:
     entrypoint: ["/bin/sh", "/generate_certs.sh"]
     environment:
       - VERIFY_CERTS=${VERIFY_CERTS}
+
   app:
     build:
       context: ./app
