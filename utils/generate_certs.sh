@@ -3,37 +3,43 @@
 # Interrompe immediatamente lo script se un comando fallisce
 set -e
 
+# Percorso assoluto ai certificati
+CA_KEY="/nginx/certs/CA.key"
+CA_CERT="/nginx/certs/CA.crt"
+SERVER_KEY="/nginx/certs/server.key"
+SERVER_CERT="/nginx/certs/server.crt"
+SERVER_CHAIN="/nginx/certs/qsc-ca-chain.crt"
+SERVER_CSR="/nginx/certs/server.csr"
+
+# Controlla se i certificati esistono già
+if [ -f "$CA_KEY" ] && [ -f "$CA_CERT" ] && [ -f "$SERVER_KEY" ] && [ -f "$SERVER_CERT" ]; then
+  echo "Certificati già esistenti. Nessuna operazione necessaria."
+  exit 0
+fi
+
 # Genera il certificato della CA
-openssl req -x509 -new -newkey dilithium5 -keyout /nginx/certs/CA.key -out /nginx/certs/CA.crt -nodes -days 365 -config /openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
+openssl req -x509 -new -newkey dilithium5 -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
 
 # Genera la richiesta di firma per il certificato del server
-openssl req -new -newkey dilithium5 -keyout /nginx/certs/server.key -out /nginx/certs/server.csr -nodes -config /openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
+openssl req -new -newkey dilithium5 -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
 
 # Firma il certificato del server usando la CA
-openssl x509 -req -in /nginx/certs/server.csr -out /nginx/certs/server.crt -CA /nginx/certs/CA.crt -CAkey /nginx/certs/CA.key -CAcreateserial -days 365
+openssl x509 -req -in "$SERVER_CSR" -out "$SERVER_CERT" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial -days 365
 
 # Crea la catena di certificati
-cat /nginx/certs/server.crt > /nginx/certs/qsc-ca-chain.crt
-cat /nginx/certs/CA.crt >> /nginx/certs/qsc-ca-chain.crt
+cat "$SERVER_CERT" > "$SERVER_CHAIN"
+cat "$CA_CERT" >> "$SERVER_CHAIN"
 
 # Imposta i permessi sui certificati generati
-chmod 644 /nginx/certs/server.key
-chmod 644 /nginx/certs/qsc-ca-chain.crt
-chmod 644 /nginx/certs/CA.crt
-chmod 644 /nginx/certs/server.crt
+chmod 644 "$SERVER_KEY" "$SERVER_CHAIN" "$CA_CERT" "$SERVER_CERT"
 
 echo "Certificati generati, catena creata e permessi impostati correttamente!"
 
 # Esegui controlli opzionali se VERIFY_CERTS è impostato su 1
 if [ "$VERIFY_CERTS" = "1" ]; then
   echo "Esecuzione dei controlli sui certificati..."
-
-  # Verifica il certificato del server
-  openssl verify -CAfile /nginx/certs/CA.crt /nginx/certs/server.crt
-
-  # Visualizza informazioni sulla chiave
-  openssl x509 -in /nginx/certs/server.crt -text -noout
-  openssl x509 -in /nginx/certs/server.crt -noout -text | grep "Public Key Algorithm"
-
+  openssl verify -CAfile "$CA_CERT" "$SERVER_CERT"
+  openssl x509 -in "$SERVER_CERT" -text -noout
+  openssl x509 -in "$SERVER_CERT" -noout -text | grep "Public Key Algorithm"
   echo "Controlli completati!"
 fi

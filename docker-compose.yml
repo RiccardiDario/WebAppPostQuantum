@@ -39,3 +39,4 @@ services:
     volumes:
       - ./nginx/certs:/opt/nginx/certs
     entrypoint: ["tail", "-f", "/dev/null"]
+    
