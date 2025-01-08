@@ -3,7 +3,7 @@ services:
     image: openquantumsafe/oqs-ossl3:latest
     container_name: cert-generator
     volumes:
-      - ./nginx/certs:/nginx/certs
+      - ./certs:/certs
       - ./utils/generate_certs.sh:/generate_certs.sh
       - ./utils/openssl.cnf:/openssl.cnf
     stdin_open: true
@@ -28,8 +28,11 @@ services:
       - "4433:4433"
       - "8080:8080"
     volumes:
-      - ./nginx/nginx.conf:/opt/nginx/nginx-conf/nginx.conf
-      - ./nginx/certs:/opt/nginx/certs
+      - ./utils/nginx.conf:/opt/nginx/nginx-conf/nginx.conf
+      - ./certs:/opt/nginx/certs
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
 
   curl:
     image: openquantumsafe/curl:latest
@@ -37,6 +40,5 @@ services:
     depends_on:
       - nginx
     volumes:
-      - ./nginx/certs:/opt/nginx/certs
+      - ./certs:/opt/certs
     entrypoint: ["tail", "-f", "/dev/null"]
-    

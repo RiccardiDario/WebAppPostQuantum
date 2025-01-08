@@ -4,12 +4,12 @@
 set -e
 
 # Percorso assoluto ai certificati
-CA_KEY="/nginx/certs/CA.key"
-CA_CERT="/nginx/certs/CA.crt"
-SERVER_KEY="/nginx/certs/server.key"
-SERVER_CERT="/nginx/certs/server.crt"
-SERVER_CHAIN="/nginx/certs/qsc-ca-chain.crt"
-SERVER_CSR="/nginx/certs/server.csr"
+CA_KEY="/certs/CA.key"
+CA_CERT="/certs/CA.crt"
+SERVER_KEY="/certs/server.key"
+SERVER_CERT="/certs/server.crt"
+SERVER_CHAIN="/certs/qsc-ca-chain.crt"
+SERVER_CSR="/certs/server.csr"
 
 # Controlla se i certificati esistono già
 if [ -f "$CA_KEY" ] && [ -f "$CA_CERT" ] && [ -f "$SERVER_KEY" ] && [ -f "$SERVER_CERT" ]; then
