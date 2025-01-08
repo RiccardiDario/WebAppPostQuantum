@@ -1,0 +1,13 @@
+services:
+  cert-generator:
+    image: openquantumsafe/oqs-ossl3:latest
+    container_name: cert-generator
+    volumes:
+      - ./certs:/certs
+      - ./generate_certs.sh:/generate_certs.sh
+      - ./openssl.cnf:/openssl.cnf
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/sh", "/generate_certs.sh"]
+    environment:
+      - VERIFY_CERTS=${VERIFY_CERTS}

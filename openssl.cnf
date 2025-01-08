@@ -1,0 +1,44 @@
+# Inizializza OpenSSL con la configurazione specificata nella sezione [openssl_init]
+openssl_conf = openssl_init
+
+[openssl_init]
+# Specifica i provider crittografici da attivare (vedi [provider_sect])
+providers = provider_sect
+
+[provider_sect]
+# Abilita il provider predefinito (configurato in [default_sect])
+default = default_sect
+# Abilita il provider OQS per algoritmi post-quantistici (configurato in [oqsprovider_sect])
+oqsprovider = oqsprovider_sect
+
+[default_sect]
+# Attiva il provider predefinito
+activate = 1
+
+[oqsprovider_sect]
+# Attiva il provider OQS per abilitare algoritmi crittografici post-quantistici
+activate = 1
+
+[req]
+# Specifica la sezione per i dettagli del Distinguished Name (DN)
+distinguished_name = req_distinguished_name
+# Disabilita il prompt interattivo; utilizza i valori definiti nella configurazione
+prompt = no
+
+[req_distinguished_name]
+# Definisce il Common Name (CN) predefinito per il certificato
+CN = Default
+
+[v3_ca]
+# Specifica che questo certificato è una Certificate Authority (CA)
+basicConstraints = critical,CA:TRUE
+# Definisce l'uso della chiave per firmare certificati e liste di revoca (CRL)
+keyUsage = critical, keyCertSign, cRLSign
+
+[v3_req]
+# Indica che il certificato non è una CA
+basicConstraints = critical,CA:FALSE
+# Definisce l'uso della chiave per firme digitali e cifratura di chiavi
+keyUsage = critical, digitalSignature, keyEncipherment
+# Specifica che il certificato è destinato all'autenticazione di un server
+extendedKeyUsage = serverAuth
