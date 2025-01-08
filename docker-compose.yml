@@ -41,7 +41,7 @@ services:
       - nginx
     volumes:
       - ./certs:/opt/certs
-      - ./output:/output # Monta una directory locale per salvare l'output
+      - ./output:/output
     entrypoint: >
       sh -c "curl --tlsv1.3 --curves kyber512 --cacert /opt/certs/CA.crt -v https://nginx_pq:4433 > /output/curl_output.txt 2>&1 &&
              awk '/^\\*/ {print \"- \" substr(\$0, 3)}' /output/curl_output.txt > /output/curl_report.md &&

@@ -3,7 +3,7 @@
 # Interrompe immediatamente lo script se un comando fallisce
 set -e
 
-# Percorso assoluto ai certificati
+# Percorso assoluto dei certificati
 CA_KEY="/certs/CA.key"
 CA_CERT="/certs/CA.crt"
 SERVER_KEY="/certs/server.key"
