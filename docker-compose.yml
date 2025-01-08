@@ -11,3 +11,30 @@ services:
     entrypoint: ["/bin/sh", "/generate_certs.sh"]
     environment:
       - VERIFY_CERTS=${VERIFY_CERTS}
+  app:
+    build:
+      context: ./app
+    container_name: flask_app
+    ports:
+     - "5000:5000" # Espone il server Flask sulla porta 5000
+    volumes:
+      - ./app:/app
+
+  nginx:
+    image: openquantumsafe/nginx:latest
+    container_name: nginx_pq
+    ports:
+      - "4433:4433"
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/opt/nginx/nginx-conf/nginx.conf
+      - ./nginx/certs:/opt/nginx/certs
+
+  curl:
+    image: openquantumsafe/curl:latest
+    container_name: pq_curl
+    depends_on:
+      - nginx
+    volumes:
+      - ./nginx/certs:/opt/nginx/certs
+    entrypoint: ["tail", "-f", "/dev/null"]
