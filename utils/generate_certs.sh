@@ -3,6 +3,12 @@
 # Interrompe immediatamente lo script se un comando fallisce
 set -e
 
+# Controlla che la variabile d'ambiente SIGNATURE_ALGO sia definita
+if [ -z "$SIGNATURE_ALGO" ]; then
+  echo "Errore: la variabile SIGNATURE_ALGO non è definita. Verifica il file .env."
+  exit 1
+fi
+
 # Percorso assoluto dei certificati
 CA_KEY="/certs/CA.key"
 CA_CERT="/certs/CA.crt"
@@ -18,10 +24,10 @@ if [ -f "$CA_KEY" ] && [ -f "$CA_CERT" ] && [ -f "$SERVER_KEY" ] && [ -f "$SERVE
 fi
 
 # Genera il certificato della CA
-openssl req -x509 -new -newkey dilithium5 -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
+openssl req -x509 -new -newkey "$SIGNATURE_ALGO" -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
 
 # Genera la richiesta di firma per il certificato del server
-openssl req -new -newkey dilithium5 -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
+openssl req -new -newkey "$SIGNATURE_ALGO" -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
 
 # Firma il certificato del server usando la CA
 openssl x509 -req -in "$SERVER_CSR" -out "$SERVER_CERT" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial -days 365
