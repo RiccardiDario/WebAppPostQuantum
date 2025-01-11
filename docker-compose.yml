@@ -47,3 +47,16 @@ services:
              echo '\n## HTTP Response' >> /output/curl_report.md &&
              awk '/^< / {print \"- \" substr(\$0, 3)}' /output/curl_output.txt >> /output/curl_report.md &&
              tail -f /dev/null"
+  
+  wireshark:
+    image: openquantumsafe/wireshark:latest
+    container_name: pq_wireshark
+    environment:
+      - DISPLAY=host.docker.internal:0.0  # Specifica il display per X11 su Windows
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix  # Forwarding X11
+      - ./pcap:/pcap  # Per salvare i file di cattura
+    stdin_open: true
+    tty: true
+    command: >
+      wireshark -k -i any -w /pcap/capture.pcap
