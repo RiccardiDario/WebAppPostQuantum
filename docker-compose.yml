@@ -26,7 +26,6 @@ services:
     container_name: nginx_pq
     ports:
       - "4433:4433"
-      - "8080:8080"
     volumes:
       - ./utils/nginx.conf:/opt/nginx/nginx-conf/nginx.conf
       - ./certs:/opt/nginx/certs
