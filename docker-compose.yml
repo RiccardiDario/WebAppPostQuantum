@@ -1,3 +1,10 @@
+networks:
+  custom_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+
 services:
   cert-generator:
     image: openquantumsafe/oqs-ossl3:latest
@@ -11,6 +18,8 @@ services:
     entrypoint: ["/bin/sh", "/generate_certs.sh"]
     env_file:
       - ./utils/.env
+    networks:
+      - custom_network
 
   app:
     build:
@@ -20,6 +29,8 @@ services:
       - "5000:5000"
     volumes:
       - ./app:/app
+    networks:
+      - custom_network
 
   nginx:
     image: openquantumsafe/nginx:latest
@@ -32,6 +43,9 @@ services:
     depends_on:
       cert-generator:
         condition: service_completed_successfully
+    networks:
+      custom_network:
+        ipv4_address: 192.168.1.100
 
   curl:
     image: openquantumsafe/curl:latest
@@ -41,22 +55,28 @@ services:
     volumes:
       - ./certs:/opt/certs
       - ./output:/output
+      - ./secrets:/secrets  # Directory per salvare i segreti
+    environment:
+      SSLKEYLOGFILE: /secrets/sslkeys.log  # Variabile di ambiente per registrare i segreti TLS
     entrypoint: >
       sh -c "curl --tlsv1.3 --curves x25519_mlkem512 --cacert /opt/certs/CA.crt -v https://nginx_pq:4433 > /output/curl_output.txt 2>&1 &&
              awk '/^\\*/ {print \"- \" substr(\$0, 3)}' /output/curl_output.txt > /output/curl_report.md &&
              echo '\n## HTTP Response' >> /output/curl_report.md &&
              awk '/^< / {print \"- \" substr(\$0, 3)}' /output/curl_output.txt >> /output/curl_report.md &&
              tail -f /dev/null"
-  
+    networks:
+      - custom_network
+
   wireshark:
     image: openquantumsafe/wireshark:latest
     container_name: pq_wireshark
+    network_mode: "host"  # Consente di catturare il traffico host
     environment:
-      - DISPLAY=host.docker.internal:0.0  # Specifica il display per X11 su Windows
+      - DISPLAY=host.docker.internal:0.0  # Reindirizza la GUI tramite X11
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix  # Forwarding X11
-      - ./pcap:/pcap  # Per salvare i file di cattura
+      - /tmp/.X11-unix:/tmp/.X11-unix  # Necessario per il forwarding della GUI X11
+      - ./pcap:/pcap  # Directory per salvare i file di cattura
     stdin_open: true
     tty: true
     command: >
-      wireshark -k -i any -w /pcap/capture.pcap
+      wireshark -k -i any -f "tcp port 4433 and host 192.168.1.100" -w /pcap/capture.pcap
