@@ -55,9 +55,9 @@ services:
     volumes:
       - ./certs:/opt/certs
       - ./output:/output
-      - ./secrets:/secrets  # Directory per salvare i segreti
+      - ./secrets:/secrets
     environment:
-      SSLKEYLOGFILE: /secrets/sslkeys.log  # Variabile di ambiente per registrare i segreti TLS
+      SSLKEYLOGFILE: /secrets/sslkeys.log
     entrypoint: >
       sh -c "curl --tlsv1.3 --curves x25519_mlkem512 --cacert /opt/certs/CA.crt -v https://nginx_pq:4433 > /output/curl_output.txt 2>&1 &&
              awk '/^\\*/ {print \"- \" substr(\$0, 3)}' /output/curl_output.txt > /output/curl_report.md &&
