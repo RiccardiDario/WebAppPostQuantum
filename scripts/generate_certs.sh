@@ -17,12 +17,6 @@ SERVER_CERT="/certs/server.crt"
 SERVER_CHAIN="/certs/qsc-ca-chain.crt"
 SERVER_CSR="/certs/server.csr"
 
-# Controlla se i certificati esistono già
-if [ -f "$CA_KEY" ] && [ -f "$CA_CERT" ] && [ -f "$SERVER_KEY" ] && [ -f "$SERVER_CERT" ]; then
-  echo "Certificati già esistenti. Nessuna operazione necessaria."
-  exit 0
-fi
-
 # Genera il certificato della CA
 openssl req -x509 -new -newkey "$SIGNATURE_ALGO" -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
 

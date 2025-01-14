@@ -5,22 +5,11 @@ networks:
       config:
         - subnet: 192.168.1.0/24
 
-services:
-  cert-generator:
-    image: openquantumsafe/oqs-ossl3:latest
-    container_name: cert-generator
-    volumes:
-      - ./certs:/certs
-      - ./utils/generate_certs.sh:/generate_certs.sh
-      - ./utils/openssl.cnf:/openssl.cnf
-    stdin_open: true
-    tty: true
-    entrypoint: ["/bin/sh", "/generate_certs.sh"]
-    env_file:
-      - ./utils/.env
-    networks:
-      - custom_network
+volumes:
+  certs-volume:
+  output-volume:
 
+services:
   app:
     build:
       context: ./app
@@ -32,14 +21,32 @@ services:
     networks:
       - custom_network
 
+  cert-generator:
+    image: openquantumsafe/oqs-ossl3:latest
+    container_name: cert-generator
+    volumes:
+      #- ./certs:/certs
+      - certs-volume:/certs
+      - ./scripts/generate_certs.sh:/generate_certs.sh
+      - ./utils/openssl.cnf:/openssl.cnf
+    stdin_open: true
+    env_file:
+      - ./utils/.env
+    tty: true
+    entrypoint: >
+      sh -c "/bin/sh /generate_certs.sh"
+    networks:
+      - custom_network
+
   nginx:
     image: openquantumsafe/nginx:latest
     container_name: nginx_pq
     ports:
       - "4433:4433"
     volumes:
+      #- ./certs:/opt/nginx/certs
+      - certs-volume:/opt/nginx/certs
       - ./utils/nginx.conf:/opt/nginx/nginx-conf/nginx.conf
-      - ./certs:/opt/nginx/certs
     depends_on:
       cert-generator:
         condition: service_completed_successfully
@@ -53,29 +60,29 @@ services:
     depends_on:
       - nginx
     volumes:
-      - ./certs:/opt/certs
+      #- ./secrets:/secrets
+      #- ./certs:/opt/certs
+      - certs-volume:/opt/certs
       - ./output:/output
-      - ./secrets:/secrets
-      - ./utils:/utils
-    environment:
-      SSLKEYLOGFILE: /secrets/sslkeys.log
+      #- output-volume:/output
+      - ./scripts/performance_test.sh:/performance_test.sh
     user: root
     entrypoint: >
       sh -c "apk add --no-cache iftop &&
-           /bin/sh /utils/performance_test.sh"
+             /bin/sh /performance_test.sh"
     networks:
       - custom_network
 
-  wireshark:
-    image: openquantumsafe/wireshark:latest
-    container_name: pq_wireshark
-    network_mode: "host"  # Consente di catturare il traffico host
-    environment:
-      - DISPLAY=host.docker.internal:0.0  # Reindirizza la GUI tramite X11
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix  # Necessario per il forwarding della GUI X11
-      - ./pcap:/pcap  # Directory per salvare i file di cattura
-    stdin_open: true
-    tty: true
-    command: >
-      wireshark -k -i any -f "tcp port 4433 and host 192.168.1.100" -w /pcap/capture.pcap
+  #wireshark:
+    #image: openquantumsafe/wireshark:latest
+    #container_name: pq_wireshark
+    #network_mode: "host"
+    #environment:
+      #- DISPLAY=host.docker.internal:0.0
+    #volumes:
+      #- /tmp/.X11-unix:/tmp/.X11-unix 
+      #- ./pcap:/pcap
+    #stdin_open: true
+    #tty: true
+    #command: >
+      #wireshark -k -i any -f "tcp port 4433 and host 192.168.1.100" -w /pcap/capture.pcap
