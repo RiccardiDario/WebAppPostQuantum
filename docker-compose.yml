@@ -54,39 +54,6 @@ services:
       custom_network:
         ipv4_address: 192.168.1.100
 
-  #curl:
-    #image: openquantumsafe/curl:latest
-    #container_name: pq_curl
-    #depends_on:
-      #- nginx
-    #volumes:
-      #- ./secrets:/secrets
-      #- ./certs:/opt/certs
-      #- certs-volume:/opt/certs
-      #- ./output:/output
-      #- output-volume:/output
-      #- ./scripts/performance_test.sh:/performance_test.sh
-    #user: root
-    #entrypoint: >
-      #sh -c "apk add --no-cache iftop &&
-             #/bin/sh /performance_test.sh"
-    #networks:
-      #- custom_network
-
-  #wireshark:
-    #image: openquantumsafe/wireshark:latest
-    #container_name: pq_wireshark
-    #network_mode: "host"
-    #environment:
-      #- DISPLAY=host.docker.internal:0.0
-    #volumes:
-      #- /tmp/.X11-unix:/tmp/.X11-unix 
-      #- ./pcap:/pcap
-    #stdin_open: true
-    #tty: true
-    #command: >
-      #wireshark -k -i any -f "tcp port 4433 and host 192.168.1.100" -w /pcap/capture.pcap
-
   client-analysis:
     build:
       context: ./ClientAnalysis

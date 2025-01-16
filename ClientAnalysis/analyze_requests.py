@@ -6,19 +6,12 @@ import time
 
 # Configura i parametri per le richieste
 URL = "https://nginx_pq:4433"
-CURL_COMMAND_TEMPLATE = [
-    "curl",
-    "--tlsv1.3",
-    "--curves", "x25519_mlkem512",
-    "--cacert", "/opt/certs/CA.crt",
+CURL_COMMAND_TEMPLATE = ["curl","--tlsv1.3","--curves", "x25519_mlkem512","--cacert", "/opt/certs/CA.crt",
     "-w", "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}\n",
-    "-o", "/dev/null",
-    "-s",
-    URL,
-]
+    "-o", "/dev/null","-s",URL,]
 
 # Numero di richieste da eseguire
-NUM_REQUESTS = 5000  # Puoi aumentare questo valore per test più intensivi
+NUM_REQUESTS = 1000
 OUTPUT_FILE = "/app/output/performance_report.csv"
 
 # Funzione per eseguire una richiesta
