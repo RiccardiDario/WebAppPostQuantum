@@ -12,7 +12,7 @@ CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "x25519_mlkem512", "--
 
 # Numero di richieste da eseguire
 NUM_REQUESTS = 100  # Numero totale di richieste da inviare
-OUTPUT_FILE = "/app/output/performance_report.csv"  # Percorso del file CSV per salvare i risultati
+OUTPUT_FILE = "/app/output/analysis_client.csv"  # Percorso del file CSV per salvare i risultati
 
 # Contatore delle richieste andate a buon fine
 success_count = 0  # Variabile globale per contare le richieste riuscite

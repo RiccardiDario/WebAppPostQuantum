@@ -18,10 +18,10 @@ SERVER_CHAIN="/certs/qsc-ca-chain.crt"
 SERVER_CSR="/certs/server.csr"
 
 # Genera il certificato della CA
-openssl req -x509 -new -newkey "$SIGNATURE_ALGO" -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
+openssl req -x509 -new -newkey "$SIGNATURE_ALGO" -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /cert-generator/openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
 
 # Genera la richiesta di firma per il certificato del server
-openssl req -new -newkey "$SIGNATURE_ALGO" -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
+openssl req -new -newkey "$SIGNATURE_ALGO" -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /cert-generator/openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
 
 # Firma il certificato del server usando la CA
 openssl x509 -req -in "$SERVER_CSR" -out "$SERVER_CERT" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial -days 365
