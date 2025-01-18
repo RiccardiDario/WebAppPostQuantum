@@ -4,7 +4,7 @@ FROM openquantumsafe/nginx:latest
 USER root
 
 # Installa Python e librerie necessarie
-RUN apk update && apk add --no-cache python3 py3-pip py3-psutil
+RUN apk update && apk add --no-cache python3 py3-pip py3-psutil iproute2
 
 # Copia i file di configurazione
 COPY nginx.conf /opt/nginx/nginx-conf/nginx.conf

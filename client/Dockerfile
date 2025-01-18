@@ -16,5 +16,5 @@ RUN apk add --no-cache python3 py3-pip
 # Torna all'utente predefinito
 USER oqs
 
-# Comando per eseguire lo script
-CMD ["python3", "/app/analyze_requests.py"]
+# Comando per eseguire lo script e mantenere il container attivo
+CMD ["sh", "-c", "python3 /app/analyze_requests.py && tail -f /dev/null"]
