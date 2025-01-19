@@ -11,7 +11,7 @@ CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "x25519_mlkem512", "--
                          "-o", "/dev/null", "-s", URL]  # Comando curl configurato per l'uso con TLS 1.3 e curve specifiche
 
 # Numero di richieste da eseguire
-NUM_REQUESTS = 100  # Numero totale di richieste da inviare
+NUM_REQUESTS = 1000  # Numero totale di richieste da inviare
 OUTPUT_FILE = "/app/output/analysis_client.csv"  # Percorso del file CSV per salvare i risultati
 
 # Contatore delle richieste andate a buon fine

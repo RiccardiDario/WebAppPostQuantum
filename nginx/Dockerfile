@@ -6,11 +6,10 @@ USER root
 # Installa Python e librerie necessarie
 RUN apk update && apk add --no-cache python3 py3-pip py3-psutil iproute2
 
-# Copia i file di configurazione
+# Copia i file di configurazione e gli script
 COPY nginx.conf /opt/nginx/nginx-conf/nginx.conf
+COPY continuous_monitor.py /opt/nginx/scripts/continuous_monitor.py
+COPY analyze_performance.py /opt/nginx/scripts/analyze_performance.py
 
-# Copia lo script di monitoraggio
-COPY monitor_nginx.py /opt/nginx/scripts/monitor_nginx.py
-
-# Comando per avviare Nginx e lo script
-CMD ["sh", "-c", " python3 /opt/nginx/scripts/monitor_nginx.py & nginx -c nginx-conf/nginx.conf -g 'daemon off;' "]
+# Comando per avviare il monitoraggio continuo e Nginx
+CMD ["sh", "-c", "python3 /opt/nginx/scripts/continuous_monitor.py & python3 /opt/nginx/scripts/analyze_performance.py  & nginx -c /opt/nginx/nginx-conf/nginx.conf -g 'daemon off;'"]
