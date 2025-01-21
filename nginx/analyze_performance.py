@@ -8,7 +8,7 @@ ACCESS_LOG = "/opt/nginx/logs/access_custom.log"
 OUTPUT_FILE = "/opt/nginx/output/sampled_performance.csv"
 
 # Numero di richieste attese
-EXPECTED_REQUESTS = 2*1000
+EXPECTED_REQUESTS = 2 * 1000  # Adatta il valore in base al numero reale di richieste
 
 def load_resource_data():
     """Carica i dati di monitoraggio dal file CSV."""
@@ -27,8 +27,9 @@ def load_resource_data():
                     "timestamp": timestamp,
                     "cpu": float(row["CPU_Usage (%)"]),
                     "memory": float(row["Memory_Usage (MB)"]),
-                    "io_read": int(row["IO_Read_Bytes"]),
-                    "io_write": int(row["IO_Write_Bytes"]),
+                    "bytes_sent": int(row["Bytes_Sent"]),
+                    "bytes_received": int(row["Bytes_Received"]),
+                    "active_connections": int(row["Active_Connections"]),
                 })
     except Exception as e:
         print(f"ERRORE: Impossibile caricare i dati di monitoraggio. Dettagli: {e}")
@@ -56,7 +57,7 @@ def wait_for_requests():
             print(f"ERRORE: Problema nel leggere il file di log. Dettagli: {e}")
 
         print(f"Attesa completamento richieste: {requests_count}/{EXPECTED_REQUESTS}")
-        time.sleep(1)  # Attendi un secondo prima di controllare di nuovo
+        time.sleep(1)
 
 def analyze_logs():
     """Analizza i log per determinare l'intervallo di tempo del test."""
@@ -64,7 +65,7 @@ def analyze_logs():
     timestamps = []
     if not os.path.exists(ACCESS_LOG):
         print(f"ERRORE: Il file {ACCESS_LOG} non esiste.")
-        return timestamps
+        return None, None
 
     try:
         with open(ACCESS_LOG, mode="r", encoding="utf-8") as file:
@@ -90,7 +91,7 @@ def analyze_logs():
 def analyze_performance():
     """Filtra i campionamenti nell'intervallo del test e li salva."""
     print("Attesa completamento delle richieste...")
-    wait_for_requests()  # Aspetta che siano completate tutte le richieste
+    wait_for_requests()
 
     print("Caricamento dati di monitoraggio...")
     resource_data = load_resource_data()
@@ -119,14 +120,22 @@ def analyze_performance():
     try:
         with open(OUTPUT_FILE, mode="w", newline="", encoding="utf-8") as file:
             writer = csv.writer(file)
-            writer.writerow(["Timestamp", "CPU_Usage (%)", "Memory_Usage (MB)", "IO_Read_Bytes", "IO_Write_Bytes"])
+            writer.writerow([
+                "Timestamp",
+                "CPU_Usage (%)",
+                "Memory_Usage (MB)",
+                "Bytes_Sent",
+                "Bytes_Received",
+                "Active_Connections"
+            ])
             for entry in filtered_data:
                 writer.writerow([
                     entry["timestamp"],
                     entry["cpu"],
                     entry["memory"],
-                    entry["io_read"],
-                    entry["io_write"]
+                    entry["bytes_sent"],
+                    entry["bytes_received"],
+                    entry["active_connections"]
                 ])
         print("Campionamenti salvati in:", OUTPUT_FILE)
     except Exception as e:

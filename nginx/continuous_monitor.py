@@ -9,29 +9,58 @@ SAMPLING_INTERVAL = 0.1  # Intervallo di campionamento in secondi
 def monitor_resources():
     """Monitora l'utilizzo delle risorse e scrive i dati in un file CSV."""
     print("Inizio monitoraggio delle risorse...")
-    
+
     # Configura il file CSV
     with open(OUTPUT_FILE, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
-        writer.writerow(["Timestamp", "CPU_Usage (%)", "Memory_Usage (MB)", "IO_Read_Bytes", "IO_Write_Bytes"])
+        writer.writerow([
+            "Timestamp",
+            "CPU_Usage (%)",
+            "Memory_Usage (MB)",
+            "Bytes_Sent",
+            "Bytes_Received",
+            "Active_Connections"
+        ])
 
-        # Calcola l'utilizzo iniziale della CPU
-        psutil.cpu_percent(interval=None)  # Inizializza il calcolo della CPU
+        # Inizializza il calcolo della CPU
+        psutil.cpu_percent(interval=None)
 
         while True:
             try:
-                timestamp = datetime.now()  # Timestamp corrente
-                cpu_usage = psutil.cpu_percent(interval=SAMPLING_INTERVAL)  # Utilizzo della CPU
-                memory_usage = psutil.virtual_memory().used / (1024 ** 2)  # RAM utilizzata in MB
-                io_counters = psutil.disk_io_counters()  # Statistiche di I/O
-                io_read = io_counters.read_bytes  # Byte letti
-                io_write = io_counters.write_bytes  # Byte scritti
+                # Timestamp corrente
+                timestamp = datetime.now()
+
+                # Utilizzo globale della CPU
+                cpu_usage = psutil.cpu_percent(interval=SAMPLING_INTERVAL)
+
+                # Memoria utilizzata in MB
+                memory_usage = psutil.virtual_memory().used / (1024 ** 2)
+
+                # Rete: byte inviati e ricevuti
+                net_counters = psutil.net_io_counters()
+                bytes_sent = net_counters.bytes_sent
+                bytes_recv = net_counters.bytes_recv
+
+                # Connessioni attive su IPv4/IPv6
+                connections = psutil.net_connections(kind="inet")
+                active_connections = len([conn for conn in connections if conn.status == "ESTABLISHED"])
 
                 # Scrivi i dati nel file CSV
-                writer.writerow([timestamp, cpu_usage, memory_usage, io_read, io_write])
+                writer.writerow([
+                    timestamp,
+                    cpu_usage,
+                    memory_usage,
+                    bytes_sent,
+                    bytes_recv,
+                    active_connections
+                ])
                 file.flush()  # Forza la scrittura sul disco
 
-                print(f"{timestamp} - CPU: {cpu_usage}%, Memoria: {memory_usage}MB, Lettura: {io_read}, Scrittura: {io_write}")
+                # Stampa dati per il debug
+                print(f"{timestamp} - CPU: {cpu_usage}%, Memoria: {memory_usage}MB, "
+                      f"Bytes Inviati: {bytes_sent}, Bytes Ricevuti: {bytes_recv}, "
+                      f"Connessioni Attive: {active_connections}")
+
             except KeyboardInterrupt:
                 print("Monitoraggio interrotto manualmente.")
                 break

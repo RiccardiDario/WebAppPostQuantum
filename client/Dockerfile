@@ -11,7 +11,7 @@ WORKDIR /app
 COPY analyze_requests.py /app/analyze_requests.py
 
 # Installa Python3 e pip
-RUN apk add --no-cache python3 py3-pip
+RUN apk add --no-cache python3 py3-pip py3-psutil
 
 # Torna all'utente predefinito
 USER oqs
