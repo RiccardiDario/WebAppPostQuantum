@@ -2,8 +2,10 @@ import psutil
 import csv
 from datetime import datetime
 import time
+import os
 
 OUTPUT_FILE = "/opt/nginx/output/resource_monitor.csv"
+STOP_FILE = "/opt/nginx/output/sampled_performance.csv"  # Usa il file CSV generato come segnale
 SAMPLING_INTERVAL = 0.1  # Intervallo di campionamento in secondi
 
 def monitor_resources():
@@ -27,11 +29,16 @@ def monitor_resources():
 
         while True:
             try:
-                # Timestamp corrente
-                timestamp = datetime.now()
+                # Controlla se il file di segnalazione esiste
+                if os.path.exists(STOP_FILE):  # Verifica se il file sampled_performance.csv esiste
+                    print(f"File di segnalazione trovato: {STOP_FILE}. Interrompendo il monitoraggio...")
+                    break
+
+                # Timestamp corrente nel formato coerente con Nginx
+                timestamp = datetime.now().strftime("%d/%b/%Y:%H:%M:%S")
 
                 # Utilizzo globale della CPU
-                cpu_usage = psutil.cpu_percent(interval=SAMPLING_INTERVAL)
+                cpu_usage = psutil.cpu_percent(interval=None)
 
                 # Memoria utilizzata in MB
                 memory_usage = psutil.virtual_memory().used / (1024 ** 2)
@@ -60,6 +67,9 @@ def monitor_resources():
                 print(f"{timestamp} - CPU: {cpu_usage}%, Memoria: {memory_usage}MB, "
                       f"Bytes Inviati: {bytes_sent}, Bytes Ricevuti: {bytes_recv}, "
                       f"Connessioni Attive: {active_connections}")
+
+                # Aspetta il prossimo campionamento
+                time.sleep(SAMPLING_INTERVAL)
 
             except KeyboardInterrupt:
                 print("Monitoraggio interrotto manualmente.")

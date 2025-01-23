@@ -6,12 +6,9 @@ import os
 RESOURCE_LOG = "/opt/nginx/output/resource_monitor.csv"
 ACCESS_LOG = "/opt/nginx/logs/access_custom.log"
 OUTPUT_FILE = "/opt/nginx/output/sampled_performance.csv"
-
-# Numero di richieste attese
-EXPECTED_REQUESTS = 2 * 1000  # Adatta il valore in base al numero reale di richieste
+EXPECTED_REQUESTS = 1000
 
 def load_resource_data():
-    """Carica i dati di monitoraggio dal file CSV."""
     print("Caricamento dati di monitoraggio dal file:", RESOURCE_LOG)
     resource_data = []
     if not os.path.exists(RESOURCE_LOG):
@@ -22,7 +19,7 @@ def load_resource_data():
         with open(RESOURCE_LOG, mode="r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
             for row in reader:
-                timestamp = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S.%f")
+                timestamp = datetime.strptime(row["Timestamp"], "%d/%b/%Y:%H:%M:%S")
                 resource_data.append({
                     "timestamp": timestamp,
                     "cpu": float(row["CPU_Usage (%)"]),
@@ -37,7 +34,6 @@ def load_resource_data():
     return resource_data
 
 def wait_for_requests():
-    """Attende che almeno EXPECTED_REQUESTS siano completate."""
     print("In attesa che almeno", EXPECTED_REQUESTS, "richieste siano completate...")
     while True:
         try:
@@ -47,7 +43,7 @@ def wait_for_requests():
                 continue
 
             with open(ACCESS_LOG, mode="r", encoding="utf-8") as file:
-                requests_count = sum(1 for _ in file)  # Conta le righe nel file di log
+                requests_count = sum(1 for _ in file)
             print(f"Trovate {requests_count} richieste nel file di log.")
 
             if requests_count >= EXPECTED_REQUESTS:
@@ -56,11 +52,9 @@ def wait_for_requests():
         except Exception as e:
             print(f"ERRORE: Problema nel leggere il file di log. Dettagli: {e}")
 
-        print(f"Attesa completamento richieste: {requests_count}/{EXPECTED_REQUESTS}")
         time.sleep(1)
 
 def analyze_logs():
-    """Analizza i log per determinare l'intervallo di tempo del test."""
     print("Analisi del file di log:", ACCESS_LOG)
     timestamps = []
     if not os.path.exists(ACCESS_LOG):
@@ -85,11 +79,11 @@ def analyze_logs():
         print("ERRORE: Nessuna richiesta trovata nel file di log.")
         return None, None
 
-    print(f"Trovati {len(timestamps)} timestamp nel file di log.")
+    print(f"Primo timestamp trovato: {timestamps[0]}")
+    print(f"Ultimo timestamp trovato: {timestamps[-1]}")
     return min(timestamps), max(timestamps)
 
 def analyze_performance():
-    """Filtra i campionamenti nell'intervallo del test e li salva."""
     print("Attesa completamento delle richieste...")
     wait_for_requests()
 
@@ -98,13 +92,13 @@ def analyze_performance():
 
     print("Analisi dei log per determinare l'intervallo del test...")
     start_time, end_time = analyze_logs()
+
     if start_time is None or end_time is None:
         print("ERRORE: Impossibile determinare l'intervallo del test.")
         return
 
     print(f"Intervallo del test: {start_time} - {end_time}")
 
-    print("Filtraggio dei dati di monitoraggio nell'intervallo del test...")
     filtered_data = [
         entry for entry in resource_data if start_time <= entry["timestamp"] <= end_time
     ]
@@ -115,8 +109,6 @@ def analyze_performance():
 
     print(f"Trovati {len(filtered_data)} campionamenti nell'intervallo del test.")
 
-    # Salvataggio dei risultati
-    print("Salvataggio dei campionamenti...")
     try:
         with open(OUTPUT_FILE, mode="w", newline="", encoding="utf-8") as file:
             writer = csv.writer(file)
