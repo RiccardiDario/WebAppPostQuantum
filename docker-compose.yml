@@ -63,6 +63,9 @@ services:
     networks:
       - custom_network
     stdin_open: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     tty: true
 
   wireshark:
