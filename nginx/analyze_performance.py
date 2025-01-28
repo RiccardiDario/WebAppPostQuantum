@@ -6,7 +6,7 @@ import os
 RESOURCE_LOG = "/opt/nginx/output/resource_monitor.csv"
 ACCESS_LOG = "/opt/nginx/logs/access_custom.log"
 OUTPUT_FILE = "/opt/nginx/output/sampled_performance.csv"
-EXPECTED_REQUESTS = 1000
+EXPECTED_REQUESTS = 500
 
 def load_resource_data():
     print("Caricamento dati di monitoraggio dal file:", RESOURCE_LOG)

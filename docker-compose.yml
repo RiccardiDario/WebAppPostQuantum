@@ -23,14 +23,14 @@ services:
     image: openquantumsafe/oqs-ossl3:latest
     container_name: cert-generator
     volumes:
-      - certs-volume:/certs
+      - ./certs:/certs
       - ./cert-generator:/cert-generator
     stdin_open: true
     env_file:
       - ./cert-generator/.env
     tty: true
     entrypoint: >
-      sh -c "/bin/sh /cert-generator/generate_certs.sh"
+      sh -c "/bin/sh /cert-generator/generate_certs.sh "
     networks:
       - custom_network
 
@@ -41,7 +41,7 @@ services:
     ports:
       - "4433:4433"
     volumes:
-      - certs-volume:/opt/nginx/certs
+      - ./certs:/opt/nginx/certs
       - ./output:/opt/nginx/output
     depends_on:
       cert-generator:
@@ -57,7 +57,7 @@ services:
     container_name: client_analysis
     volumes:
       - ./output:/app/output
-      - certs-volume:/opt/certs
+      - ./certs:/opt/certs
     depends_on:
       - nginx
     networks:
