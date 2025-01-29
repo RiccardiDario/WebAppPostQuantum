@@ -41,7 +41,7 @@ services:
     ports:
       - "4433:4433"
     volumes:
-      - ./certs:/opt/nginx/certs
+      - ./certs:/etc/nginx/certs/
       - ./output:/opt/nginx/output
     depends_on:
       cert-generator:
