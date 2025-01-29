@@ -1,31 +1,15 @@
-import subprocess
-import csv
-import os
-import logging
+import subprocess, csv, os, logging, time, psutil, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
-import psutil
 from threading import Thread, Lock
 from datetime import datetime
-import re  # Per analizzare i dati di trace
 
 # Configurazione logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]
-)
+logging.basicConfig(level=logging.DEBUG,format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
 # Configura i parametri per le richieste
-CURL_COMMAND_TEMPLATE = [
-    "curl",
-    "--tlsv1.3",
-    "--curves", "x25519_mlkem512",  # Specifica curve post-quantum.
-    "--cacert", "/opt/certs/CA.crt",  # Certificato CA.
-    "-w", "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}\n",  # Metriche.
-    "-s",  # Esegue la richiesta in modo silenzioso.
-    "https://nginx_pq:4433"  # URL di destinazione.
-]
+CURL_COMMAND_TEMPLATE = ["curl","--tlsv1.3","--curves", "x25519_mlkem512","--cacert", "/opt/certs/CA.crt",
+"-w", "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}\n",
+"-s", "https://nginx_pq:4433"]
 
 # Numero di richieste da eseguire
 NUM_REQUESTS = 500
@@ -43,13 +27,10 @@ global_stats = {"cpu_usage": [], "memory_usage": []}  # Statistiche globali su C
 
 
 def monitor_system():
-    """Monitora l'utilizzo globale del sistema mentre ci sono richieste attive."""
     with open(MONITOR_FILE, mode="w", newline="", encoding="utf-8") as monitor_file:
         monitor_writer = csv.writer(monitor_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
         monitor_writer.writerow(["Timestamp", "CPU_Usage_Percent", "Memory_Usage_MB", "Active_TLS_Connections"])
-
-        stable_counter = 0  # Contatore per verificare stabilità
-
+        stable_counter = 0
         while True:
             with active_requests_lock:
                 tls_connections = active_requests
@@ -64,7 +45,6 @@ def monitor_system():
                 stable_counter += 1
                 if stable_counter >= 5:
                     break
-
             time.sleep(0.1)
 
 
@@ -78,30 +58,25 @@ def execute_request(request_number):
         trace_file_name = f"{TRACE_LOG_DIR}trace_request_{request_number}.log"
         curl_command = CURL_COMMAND_TEMPLATE + ["--trace", trace_file_name, "-o", "/dev/null"]
         start_time = time.time()
-        process = subprocess.Popen(
-            curl_command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-
-        stdout, stderr = process.communicate()
+        process = subprocess.Popen(curl_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         end_time = time.time()
+        stdout, stderr = process.communicate()
         elapsed_time = end_time - start_time
 
-        # Analisi del trace direttamente dal file salvato
+        # Analisi del trace 
         bytes_sent = 0
         bytes_received = 0
-
         with open(trace_file_name, "r", encoding="utf-8") as trace_file:
             for line in trace_file:
-                match_sent = re.search(r"=> Send SSL data, (\d+) bytes", line)
+                # Controlla l'invio di dati (Send SSL data e Send header)
+                match_sent = re.search(r"(=> Send SSL data, (\d+) bytes|Send header, (\d+) bytes)", line)
                 if match_sent:
-                    bytes_sent += int(match_sent.group(1))
+                    bytes_sent += int(match_sent.group(2) or match_sent.group(3))  # Prende il primo valore disponibile
 
-                match_received = re.search(r"<= Recv SSL data, (\d+) bytes", line)
+                # Controlla la ricezione di dati (Recv SSL data e Recv header)
+                match_received = re.search(r"(<= Recv SSL data, (\d+) bytes|Recv header, (\d+) bytes|Recv data, (\d+) bytes)", line)
                 if match_received:
-                    bytes_received += int(match_received.group(1))
+                    bytes_received += int(match_received.group(2) or match_received.group(3) or match_received.group(4))  # Prende il primo valore disponibile
 
         # Estrazione delle metriche dal comando curl
         metrics = stdout.strip()
@@ -114,13 +89,8 @@ def execute_request(request_number):
             logging.error(f"Errore nel parsing delle metriche per la richiesta {request_number}: {e}")
             connect_time = handshake_time = total_time = None
 
-        logging.info(
-            f"Richiesta {request_number}: Stato=Success, "
-            f"Connect_Time={connect_time}, TLS_Handshake={handshake_time}, "
-            f"Total_Time={total_time}, Elapsed_Time={elapsed_time}, "
-            f"Bytes_Sent={bytes_sent}, Bytes_Received={bytes_received}"
-        )
-
+        logging.info(f"Richiesta {request_number}: Stato=Success, " f"Connect_Time={connect_time}, TLS_Handshake={handshake_time}, "
+            f"Total_Time={total_time}, Elapsed_Time={elapsed_time}, " f"Bytes_Sent={bytes_sent}, Bytes_Received={bytes_received}")
         return [request_number, connect_time, handshake_time, total_time, elapsed_time, "Success", bytes_sent, bytes_received]
 
     except Exception as e:
@@ -151,7 +121,6 @@ with open(OUTPUT_FILE, mode="w", newline="", encoding="utf-8") as file:
         monitor_thread.join()
         end_time = time.time()
 
-    # Scrittura dei risultati nel CSV con contatore di successi
     success_count = 0
     for result in request_results:
         request_number = result[0]
