@@ -58,6 +58,7 @@ services:
     volumes:
       - ./output:/app/output
       - ./certs:/opt/certs
+      - ./tls_keys:/tls_keys
     depends_on:
       - nginx
     networks:
@@ -67,6 +68,8 @@ services:
       - NET_ADMIN
       - NET_RAW
     tty: true
+    environment:
+      - SSLKEYLOGFILE=/tls_keys/tls-secrets.log
 
   wireshark:
     image: openquantumsafe/wireshark:latest
