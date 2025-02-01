@@ -17,23 +17,29 @@ SERVER_CERT="/certs/server.crt"
 SERVER_CHAIN="/certs/qsc-ca-chain.crt"
 SERVER_CSR="/certs/server.csr"
 
-# Genera il certificato della CA
-openssl req -x509 -new -newkey "$SIGNATURE_ALGO" -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /cert-generator/openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
+# Controlla se i certificati esistono già
+if [ -f "$CA_KEY" ] && [ -f "$CA_CERT" ] && [ -f "$SERVER_KEY" ] && [ -f "$SERVER_CERT" ]; then
+  echo "I certificati sono già presenti. Nessuna nuova generazione necessaria."
+else
+  echo "Generazione dei certificati..."
+  # Genera il certificato della CA
+  openssl req -x509 -new -newkey "$SIGNATURE_ALGO" -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /cert-generator/openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
 
-# Genera la richiesta di firma per il certificato del server
-openssl req -new -newkey "$SIGNATURE_ALGO" -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /cert-generator/openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
+  # Genera la richiesta di firma per il certificato del server
+  openssl req -new -newkey "$SIGNATURE_ALGO" -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /cert-generator/openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
 
-# Firma il certificato del server usando la CA
-openssl x509 -req -in "$SERVER_CSR" -out "$SERVER_CERT" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial -days 365
+  # Firma il certificato del server usando la CA
+  openssl x509 -req -in "$SERVER_CSR" -out "$SERVER_CERT" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial -days 365
 
-# Crea la catena di certificati
-cat "$SERVER_CERT" > "$SERVER_CHAIN"
-cat "$CA_CERT" >> "$SERVER_CHAIN"
+  # Crea la catena di certificati
+  cat "$SERVER_CERT" > "$SERVER_CHAIN"
+  cat "$CA_CERT" >> "$SERVER_CHAIN"
 
-# Imposta i permessi sui certificati generati
-chmod 644 "$SERVER_KEY" "$SERVER_CHAIN" "$CA_CERT" "$SERVER_CERT"
-
-echo "Certificati generati, catena creata e permessi impostati correttamente!"
+  # Imposta i permessi sui certificati generati
+  chmod 644 "$SERVER_KEY" "$SERVER_CHAIN" "$CA_CERT" "$SERVER_CERT"
+  
+  echo "Certificati generati, catena creata e permessi impostati correttamente!"
+fi
 
 # Esegui controlli opzionali se VERIFY_CERTS è impostato su 1
 if [ "$VERIFY_CERTS" = "1" ]; then
