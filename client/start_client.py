@@ -3,18 +3,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-# 📌 Configurazione logging
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
-# 🔧 Configurazione delle richieste HTTPS
 CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "x25519_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 
-# 📂 Impostazioni generali
-NUM_REQUESTS, OUTPUT_FILE, MONITOR_FILE, TRACE_LOG_DIR = 500, "/app/output/analysis_client.csv", "/app/output/system_monitoring.csv", "/app/logs/"
-os.makedirs(TRACE_LOG_DIR, exist_ok=True)  # Crea la directory per i log
+NUM_REQUESTS, OUTPUT_FILE, MONITOR_FILE, TRACE_LOG_DIR = 500, "/app/output/request_client.csv", "/app/output/system_client.csv", "/app/logs/"
+os.makedirs(TRACE_LOG_DIR, exist_ok=True)
 
-# 🔍 Variabili di stato per il monitoraggio
 active_requests, active_requests_lock, global_stats = 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
 def monitor_system():
@@ -38,29 +34,27 @@ def execute_request(req_num):
 
     try:
         start = time.time()
-        process = subprocess.Popen(CURL_COMMAND_TEMPLATE + ["--trace", trace_file, "-o", "/dev/null"],
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen(CURL_COMMAND_TEMPLATE + ["--trace", trace_file, "-o", "/dev/null"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         elapsed_time = time.time() - start
         stdout, stderr = process.communicate()
         bytes_sent = bytes_received = 0
-        previous_line = ""  # 🔍 Per memorizzare la riga precedente
+        previous_line = ""
         if os.path.exists(trace_file):
             with open(trace_file, "r", encoding="utf-8") as f:
                 for line in f:
                     m_sent = re.search(r"(=> Send SSL data, (\d+) bytes|Send header, (\d+) bytes)", line)
                     m_recv = re.search(r"(<= Recv SSL data, (\d+) bytes|Recv header, (\d+) bytes|Recv data, (\d+) bytes)", line)
-                    match_tls = re.search(r"SSL connection using TLSv1.3 / .* / (\S+) / (\S+)", line)  # 🔍 Estrai KEM e Firma
-                    match_cert_size = re.search(r"<= Recv SSL data, (\d+) bytes", line)  # 📜 Possibile dimensione certificato
-                    
+                    match_tls = re.search(r"SSL connection using TLSv1.3 / .* / (\S+) / (\S+)", line)
+                    match_cert_size = re.search(r"<= Recv SSL data, (\d+) bytes", line)
                     bytes_sent += int(m_sent.group(2) or m_sent.group(3)) if m_sent else 0
                     bytes_received += int(m_recv.group(2) or m_recv.group(3) or m_recv.group(4)) if m_recv else 0
+                    
                     if match_tls: kem, sig_alg = match_tls.group(1), match_tls.group(2)
-
-                    # 🔍 Se la riga precedente è "TLS handshake, Certificate (11):", prendi la dimensione del certificato
+                    
                     if "TLS handshake, Certificate (11):" in previous_line and match_cert_size:
                         cert_size = int(match_cert_size.group(1))
-
-                    previous_line = line  # 🔄 Aggiorna la riga precedente per la prossima iterazione
+                    
+                    previous_line = line
 
         try:
             metrics = stdout.strip().rsplit(", ", 1)
@@ -83,15 +77,13 @@ def execute_request(req_num):
     finally:
         with active_requests_lock: active_requests -= 1  
 
-# 🚀 **Avvio del test in parallelo**
 with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
     writer.writerow(["Request_Number", "Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", 
                      "Status", "Success_Count", "Bytes_Sent(B)", "Bytes_Received(B)", "KEM", "Signature", "Cert_Size(B)"])
     
-    monitor_thread = Thread(target=monitor_system); monitor_thread.start()  # 📊 Avvia monitoraggio CPU/RAM
+    monitor_thread = Thread(target=monitor_system); monitor_thread.start()
     start_time = time.time()
-    
     try:
         request_results = []  
         with ThreadPoolExecutor(max_workers=NUM_REQUESTS) as executor:
@@ -99,7 +91,7 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             for future in as_completed(futures):
                 request_results.append(future.result()) 
     finally:
-        monitor_thread.join()  # ⏳ **Attende la fine del monitoraggio prima di proseguire**
+        monitor_thread.join()
         end_time = time.time()
 
     success_count = 0
