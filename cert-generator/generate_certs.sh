@@ -17,19 +17,23 @@ SERVER_CERT="/certs/server.crt"
 SERVER_CHAIN="/certs/qsc-ca-chain.crt"
 SERVER_CSR="/certs/server.csr"
 
+# Definisce l'IP del server per il certificato
+SERVER_IP="192.168.1.3"
+
 # Controlla se i certificati esistono già
 if [ -f "$CA_KEY" ] && [ -f "$CA_CERT" ] && [ -f "$SERVER_KEY" ] && [ -f "$SERVER_CERT" ]; then
   echo "I certificati sono già presenti. Nessuna nuova generazione necessaria."
 else
   echo "Generazione dei certificati..."
+  
   # Genera il certificato della CA
   openssl req -x509 -new -newkey "$SIGNATURE_ALGO" -keyout "$CA_KEY" -out "$CA_CERT" -nodes -days 365 -config /cert-generator/openssl.cnf -subj "/CN=oqstest CA" -extensions v3_ca 
 
-  # Genera la richiesta di firma per il certificato del server
-  openssl req -new -newkey "$SIGNATURE_ALGO" -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /cert-generator/openssl.cnf -subj "/CN=nginx_pq" -extensions v3_req 
+  # Genera la richiesta di firma per il certificato del server con il SAN
+  openssl req -new -newkey "$SIGNATURE_ALGO" -keyout "$SERVER_KEY" -out "$SERVER_CSR" -nodes -config /cert-generator/openssl.cnf -subj "/CN=$SERVER_IP" -reqexts v3_req
 
   # Firma il certificato del server usando la CA
-  openssl x509 -req -in "$SERVER_CSR" -out "$SERVER_CERT" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial -days 365
+  openssl x509 -req -in "$SERVER_CSR" -out "$SERVER_CERT" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial -days 365 -extfile /cert-generator/openssl.cnf -extensions v3_req
 
   # Crea la catena di certificati
   cat "$SERVER_CERT" > "$SERVER_CHAIN"

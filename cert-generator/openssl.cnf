@@ -42,3 +42,9 @@ basicConstraints = critical,CA:FALSE
 keyUsage = critical, digitalSignature, keyEncipherment
 # Specifica che il certificato è destinato all'autenticazione di un server
 extendedKeyUsage = serverAuth
+# 🔥 Abilita il Subject Alternative Name (SAN)
+subjectAltName = @alt_names
+
+[alt_names]
+IP.1 = 192.168.1.3
+DNS.1 = nginx_pq

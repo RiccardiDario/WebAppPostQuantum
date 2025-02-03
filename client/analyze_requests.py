@@ -8,8 +8,7 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(m
 
 # 🔧 Configurazione delle richieste HTTPS
 CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "x25519_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
-                         "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n",
-                         "-s", "https://nginx_pq:4433"]
+"Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 
 # 📂 Impostazioni generali
 NUM_REQUESTS, OUTPUT_FILE, MONITOR_FILE, TRACE_LOG_DIR = 500, "/app/output/analysis_client.csv", "/app/output/system_monitoring.csv", "/app/logs/"
@@ -35,15 +34,14 @@ def execute_request(req_num):
     global active_requests
     with active_requests_lock: active_requests += 1  
     trace_file = f"{TRACE_LOG_DIR}trace_{req_num}.log" 
-    kem, sig_alg, cert_size = "Unknown", "Unknown", 0  # 🔍 Inizializza valori
+    kem, sig_alg, cert_size = "Unknown", "Unknown", 0
 
     try:
         start = time.time()
         process = subprocess.Popen(CURL_COMMAND_TEMPLATE + ["--trace", trace_file, "-o", "/dev/null"],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        elapsed_time = time.time() - start
         stdout, stderr = process.communicate()
-        elapsed_time = time.time() - start  # 🔄 Calcolo tempo di esecuzione
-
         bytes_sent = bytes_received = 0
         previous_line = ""  # 🔍 Per memorizzare la riga precedente
         if os.path.exists(trace_file):
@@ -96,10 +94,10 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
     
     try:
         request_results = []  
-        with ThreadPoolExecutor(max_workers=NUM_REQUESTS) as executor:  # 🧵 **Avvia NUM_REQUESTS richieste in parallelo**
-            futures = [executor.submit(execute_request, i + 1) for i in range(NUM_REQUESTS)]  # ✅ **Crea task paralleli**
-            for future in as_completed(futures):  # ⏳ **Attende il completamento di ogni richiesta**
-                request_results.append(future.result())  
+        with ThreadPoolExecutor(max_workers=NUM_REQUESTS) as executor:
+            futures = [executor.submit(execute_request, i + 1) for i in range(NUM_REQUESTS)]  
+            for future in as_completed(futures):
+                request_results.append(future.result()) 
     finally:
         monitor_thread.join()  # ⏳ **Attende la fine del monitoraggio prima di proseguire**
         end_time = time.time()
