@@ -7,7 +7,7 @@ USER root
 RUN apk update && apk add --no-cache python3 py3-pip py3-psutil
 
 # Copia i file di configurazione e gli script
-COPY nginx.conf /opt/nginx/nginx-conf/nginx.conf
+COPY nginx-conf/nginx.conf /opt/nginx/nginx-conf/nginx.conf
 COPY start_server.py /opt/nginx/scripts/start_server.py
 
 # Comando per avviare il monitoraggio continuo e Nginx

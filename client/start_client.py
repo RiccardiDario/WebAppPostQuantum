@@ -23,7 +23,7 @@ def monitor_system():
             writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"), psutil.cpu_percent(), psutil.virtual_memory().used / (1024 ** 2), tls])
             if tls == 0: stable_counter += 1
             if stable_counter >= 5: break
-            time.sleep(0.1)
+            time.sleep(0.01)
 
 def execute_request(req_num):
     """Esegue una richiesta HTTPS con `curl`, verifica HTTP 200 e analizza il file di trace generato."""

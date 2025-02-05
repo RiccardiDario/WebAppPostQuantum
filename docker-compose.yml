@@ -43,9 +43,6 @@ services:
     volumes:
       - ./certs:/etc/nginx/certs/
       - ./output:/opt/nginx/output
-    depends_on:
-      cert-generator:
-        condition: service_completed_successfully
     privileged: true
     networks:
       custom_network:
