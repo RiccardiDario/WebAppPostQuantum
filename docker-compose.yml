@@ -43,10 +43,14 @@ services:
     volumes:
       - ./certs:/etc/nginx/certs/
       - ./output:/opt/nginx/output
+      - ./nginx/start_server.py:/opt/nginx/start_server.py
+      - ./nginx/nginx.conf:/opt/nginx/nginx.conf
     privileged: true
     networks:
       custom_network:
         ipv4_address: 192.168.1.100
+    entrypoint: ["/bin/sh", "-c", "nginx -c /opt/nginx/nginx.conf -g 'daemon off;' & sleep 5 && python3 /opt/nginx/start_server.py  && tail -f /dev/null"]
+
 
   client-analysis:
     build:

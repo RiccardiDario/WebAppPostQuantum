@@ -46,10 +46,12 @@ RUN strip "${OSSLDIR}/lib/"*.a "${OSSLDIR}/lib64/ossl-modules/oqsprovider.so" "$
 
 FROM alpine:${ALPINE_VERSION}
 ARG INSTALLDIR BASEDIR OSSLDIR
-RUN apk update && apk --no-cache add pcre-dev python3 py3-psutil
+RUN apk update && apk --no-cache add pcre-dev
 COPY --from=builder ${INSTALLDIR} ${INSTALLDIR}
 COPY --from=builder ${OSSLDIR} ${OSSLDIR}
+COPY nginx-conf/ ${INSTALLDIR}/nginx-conf
 RUN ln -sf /dev/stdout "${INSTALLDIR}/logs/access.log" && ln -sf /dev/stderr "${INSTALLDIR}/logs/error.log"
 EXPOSE 4433
 ENV PATH="${INSTALLDIR}/sbin:${PATH}" OPENSSL_CONF="${OSSLDIR}/ssl/openssl.cnf"
 STOPSIGNAL SIGTERM
+CMD ["nginx", "-c", "nginx-conf/nginx.conf", "-g", "daemon off;"]
