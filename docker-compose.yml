@@ -38,7 +38,7 @@ services:
       - "4433:4433"
     volumes:
       - ./certs:/etc/nginx/certs/
-      - ./output:/opt/nginx/output
+      - ./report:/opt/nginx/output
       - ./nginx/start_server.py:/opt/nginx/start_server.py
       - ./nginx/nginx.conf:/opt/nginx/nginx.conf
     privileged: true
@@ -55,7 +55,7 @@ services:
       context: ./client
     container_name: client_analysis
     volumes:
-      - ./output:/app/output
+      - ./report:/app/output
       - ./certs:/opt/certs
       - ./tls_keys:/tls_keys
       - ./client/start_client.py:/app/start_client.py
