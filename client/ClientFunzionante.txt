@@ -8,6 +8,7 @@ ARG DEFAULT_GROUPS="x25519:x448:kyber512:p256_kyber512:kyber768:p384_kyber768:ky
 
 FROM alpine:${ALPINE_VERSION} AS intermediate
 ARG OPENSSL_TAG LIBOQS_TAG OQSPROVIDER_TAG CURL_VERSION INSTALLDIR DEFAULT_GROUPS
+LABEL version="5"
 
 RUN apk update && apk --no-cache add build-base linux-headers libtool automake autoconf cmake ninja make openssl openssl-dev git wget
 
@@ -45,6 +46,5 @@ RUN env LDFLAGS="-Wl,-R${INSTALLDIR}/lib64" ./configure --prefix="${INSTALLDIR}"
 
 FROM alpine:${ALPINE_VERSION} AS final
 ARG INSTALLDIR
-RUN apk update && apk --no-cache add python3 py3-psutil
 COPY --from=intermediate ${INSTALLDIR} ${INSTALLDIR}
 ENV PATH="${INSTALLDIR}/bin:${PATH}"

@@ -5,10 +5,6 @@ networks:
       config:
         - subnet: 192.168.1.0/24
 
-volumes:
-  certs-volume:
-  output-volume:
-
 services:
   server:
     build:
@@ -46,6 +42,8 @@ services:
       - ./nginx/start_server.py:/opt/nginx/start_server.py
       - ./nginx/nginx.conf:/opt/nginx/nginx.conf
     privileged: true
+    depends_on:
+      - cert-generator
     networks:
       custom_network:
         ipv4_address: 192.168.1.100
@@ -60,17 +58,16 @@ services:
       - ./output:/app/output
       - ./certs:/opt/certs
       - ./tls_keys:/tls_keys
+      - ./client/start_client.py:/app/start_client.py
     depends_on:
       - nginx
     networks:
       - custom_network
     stdin_open: true
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
     tty: true
     environment:
       - SSLKEYLOGFILE=/tls_keys/tls-secrets.log
+    entrypoint: ["/bin/sh", "-c", "sleep 7 && python3 /app/start_client.py  && tail -f /dev/null"]
 
   wireshark:
     image: openquantumsafe/wireshark:latest
