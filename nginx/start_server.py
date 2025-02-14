@@ -3,7 +3,7 @@ from datetime import datetime  # Per gestione timestamp
 
 # Definizione dei file
 RESOURCE_LOG, ACCESS_LOG, OUTPUT_FILE = "/opt/nginx/output/monitor_nginx.csv", "/opt/nginx/logs/access_custom.log", "/opt/nginx/output/monitor_nginx_filtered.csv"
-EXPECTED_REQUESTS, SAMPLING_INTERVAL = 500, 0.1  # Soglia richieste e intervallo di campionamento
+EXPECTED_REQUESTS, SAMPLING_INTERVAL = 500, 0.01  # Soglia richieste e intervallo di campionamento
 
 def monitor_resources():
     """Monitora le risorse fino al raggiungimento delle richieste attese."""
