@@ -1,9 +1,26 @@
 import psutil, csv, time, os  # Import librerie necessarie
 from datetime import datetime  # Per gestione timestamp
 
-# Definizione dei file
-RESOURCE_LOG, ACCESS_LOG, OUTPUT_FILE = "/opt/nginx/output/monitor_nginx.csv", "/opt/nginx/logs/access_custom.log", "/opt/nginx/output/monitor_nginx_filtered.csv"
-EXPECTED_REQUESTS, SAMPLING_INTERVAL = 500, 0.01  # Soglia richieste e intervallo di campionamento
+def get_next_filename(base_path, base_name, extension):
+    """Genera il nome del file con numerazione incrementale."""
+    counter = 1
+    while os.path.exists(f"{base_path}/{base_name}{counter}.{extension}"):
+        counter += 1
+    return f"{base_path}/{base_name}{counter}.{extension}", counter
+
+# Definizione delle cartelle di output
+OUTPUT_DIR = "/opt/nginx/output"
+RESOURCE_LOG_DIR = f"{OUTPUT_DIR}/resource_logs"
+FILTERED_LOG_DIR = f"{OUTPUT_DIR}/filtered_logs"
+os.makedirs(RESOURCE_LOG_DIR, exist_ok=True)
+os.makedirs(FILTERED_LOG_DIR, exist_ok=True)
+
+# Generazione nomi file con numerazione incrementale
+RESOURCE_LOG, _ = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx", "csv")
+OUTPUT_FILE, _ = get_next_filename(FILTERED_LOG_DIR, "monitor_nginx_filtered", "csv")
+
+ACCESS_LOG = "/opt/nginx/logs/access_custom.log"
+EXPECTED_REQUESTS, SAMPLING_INTERVAL = 400, 0.01  # Soglia richieste e intervallo di campionamento
 
 def monitor_resources():
     """Monitora le risorse fino al raggiungimento delle richieste attese."""

@@ -1,15 +1,29 @@
-import subprocess, csv, os, logging, time, psutil, re
+import subprocess, csv, os, logging, time, psutil, re, math
+import pandas as pd
+import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
+def get_next_filename(base_path, base_name, extension):
+    """Genera il nome del file con numerazione incrementale."""
+    counter = 1
+    while os.path.exists(f"{base_path}/{base_name}{counter}.{extension}"):
+        counter += 1
+    return f"{base_path}/{base_name}{counter}.{extension}", counter
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
 CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "x25519_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 
-NUM_REQUESTS, OUTPUT_FILE, MONITOR_FILE, TRACE_LOG_DIR = 500, "/app/output/request_client.csv", "/app/output/system_client.csv", "/app/logs/"
+NUM_REQUESTS, OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR = 400, "/app/output/request_logs", "/app/output/system_logs", "/app/logs/"
 os.makedirs(TRACE_LOG_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(MONITOR_DIR, exist_ok=True)
+
+OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
+MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
 
 active_requests, active_requests_lock, global_stats = 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
@@ -101,3 +115,56 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         writer.writerow(result[:6] + [f"{success_count}/{NUM_REQUESTS}"] + result[6:])
 
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
+
+# Generazione dei grafici mediati su 3 misurazioni
+graphs_dir = f"{OUTPUT_DIR}/graphs/"
+os.makedirs(graphs_dir, exist_ok=True)
+logging.info("Generazione dei grafici mediati...")
+
+files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")], key=lambda x: int(re.search(r"\d+", x).group()))
+
+if len(files) < 3:
+    logging.warning("Non ci sono abbastanza file per calcolare una media (servono almeno 3 file)")
+else:
+    logging.info(f"Saranno utilizzati {len(files)} file per il calcolo della media.")
+    dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, file)) for file in files]
+    for df in dataframes:
+        for col in ["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)"]:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    df_numeric = pd.concat(dataframes)[["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)"]]
+    df_avg = df_numeric.groupby(level=0).mean()
+    
+    logging.info("Media calcolata su alcune righe di esempio:")
+    for idx in range(0, len(df_avg), max(1, len(df_avg) // 10)):
+        logging.info(f"Riga {idx + 1}: {df_avg.iloc[idx].to_dict()}")
+    
+    requests_per_plot = 100
+    num_plots = math.ceil(len(df_avg) / requests_per_plot)
+
+    for i in range(num_plots):
+        start_idx = i * requests_per_plot
+        end_idx = min((i + 1) * requests_per_plot, len(df_avg))
+        df_subset = df_avg.iloc[start_idx:end_idx]
+
+        plt.figure(figsize=(14, 7))
+        bar_width = 1.5  # Larghezza delle barre
+        spacing = 0.5  # Spazio tra le barre
+        x_positions = (df_subset.index + 1) * (bar_width + spacing)
+
+        plt.bar(x_positions, df_subset["Connect_Time(s)"], label="Connect Time", color="red", alpha=0.7, width=bar_width)
+        plt.bar(x_positions, df_subset["TLS_Handshake(s)"], bottom=df_subset["Connect_Time(s)"], label="TLS Handshake Time", color="orange", alpha=0.7, width=bar_width)
+        plt.bar(x_positions, df_subset["Total_Time(s)"], bottom=df_subset["TLS_Handshake(s)"], label="Total Time", color="gray", alpha=0.7, width=bar_width)
+
+        plt.xlabel("Entry Number in CSV")
+        plt.ylabel("Time (s)")
+        plt.title(f"Averaged Timing Breakdown for TLS Connections (Entries {start_idx+1} to {end_idx})")
+        plt.xticks(x_positions[::10], labels=df_subset.index[::10], rotation=30)
+        plt.legend()
+        plt.grid(axis="y", linestyle="--", alpha=0.7)
+        
+        graph_filename = os.path.join(graphs_dir, f"tls_avg_graph_{start_idx+1}_{end_idx}.png")
+        plt.savefig(graph_filename, dpi=300)
+        logging.info(f"Grafico salvato: {graph_filename}")
+        
+        plt.close()
