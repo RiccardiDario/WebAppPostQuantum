@@ -18,6 +18,7 @@ CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "x25519_mlkem512", "--
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 
 NUM_REQUESTS, OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR = 400, "/app/output/request_logs", "/app/output/system_logs", "/app/logs/"
+kem, sig_alg= "Unknown", "Unknown"
 os.makedirs(TRACE_LOG_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(MONITOR_DIR, exist_ok=True)
@@ -44,7 +45,8 @@ def execute_request(req_num):
     global active_requests
     with active_requests_lock: active_requests += 1  
     trace_file = f"{TRACE_LOG_DIR}trace_{req_num}.log" 
-    kem, sig_alg, cert_size = "Unknown", "Unknown", 0
+    global kem, sig_alg
+    cert_size = 0
 
     try:
         start = time.time()
@@ -116,29 +118,32 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
 
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
 
-# Generazione dei grafici mediati su 3 misurazioni
+# Lettura e calcolo delle metriche dai file CSV
 graphs_dir = f"{OUTPUT_DIR}/graphs/"
 os.makedirs(graphs_dir, exist_ok=True)
 logging.info("Generazione dei grafici mediati...")
 
 files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")], key=lambda x: int(re.search(r"\d+", x).group()))
 
-if len(files) < 3:
-    logging.warning("Non ci sono abbastanza file per calcolare una media (servono almeno 3 file)")
-else:
-    logging.info(f"Saranno utilizzati {len(files)} file per il calcolo della media.")
+# Se ci sono almeno tre file request_clientX.csv, calcola la media e genera i grafici
+if len(files) >= 3:
     dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, file)) for file in files]
+    
+    # Convertire colonne numeriche
     for df in dataframes:
-        for col in ["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)"]:
+        for col in ["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", "Cert_Size(B)"]:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    df_numeric = pd.concat(dataframes)[["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)"]]
+    # Calcolare la media delle misure
+    df_numeric = pd.concat(dataframes)[["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", "Cert_Size(B)"]]
     df_avg = df_numeric.groupby(level=0).mean()
     
-    logging.info("Media calcolata su alcune righe di esempio:")
-    for idx in range(0, len(df_avg), max(1, len(df_avg) // 10)):
-        logging.info(f"Riga {idx + 1}: {df_avg.iloc[idx].to_dict()}")
-    
+    logging.info("### Verifica delle medie calcolate ###")
+    for idx, row in df_avg.head(10).iterrows():
+        logging.info(f"Riga {idx}: Connect Time={row['Connect_Time(s)']:.6f}, TLS Handshake={row['TLS_Handshake(s)']:.6f}, Total Time={row['Total_Time(s)']:.6f}, Elapsed Time={row['Elapsed_Time(s)']:.6f}, Cert Size={row['Cert_Size(B)']:.2f} B")
+    logging.info("### Fine verifica delle medie ###")
+
+    cert_size_mean = df_avg["Cert_Size(B)"].mean()
     requests_per_plot = 100
     num_plots = math.ceil(len(df_avg) / requests_per_plot)
 
@@ -146,25 +151,38 @@ else:
         start_idx = i * requests_per_plot
         end_idx = min((i + 1) * requests_per_plot, len(df_avg))
         df_subset = df_avg.iloc[start_idx:end_idx]
+        x_positions = (df_subset.index + 1)
 
+        # Grafico a barre con legenda aggiornata
         plt.figure(figsize=(14, 7))
-        bar_width = 1.5  # Larghezza delle barre
-        spacing = 0.5  # Spazio tra le barre
-        x_positions = (df_subset.index + 1) * (bar_width + spacing)
-
-        plt.bar(x_positions, df_subset["Connect_Time(s)"], label="Connect Time", color="red", alpha=0.7, width=bar_width)
-        plt.bar(x_positions, df_subset["TLS_Handshake(s)"], bottom=df_subset["Connect_Time(s)"], label="TLS Handshake Time", color="orange", alpha=0.7, width=bar_width)
-        plt.bar(x_positions, df_subset["Total_Time(s)"], bottom=df_subset["TLS_Handshake(s)"], label="Total Time", color="gray", alpha=0.7, width=bar_width)
-
+        plt.bar(x_positions, df_subset["Connect_Time(s)"], label="Connect Time", color="red", alpha=0.7)
+        plt.bar(x_positions, df_subset["TLS_Handshake(s)"], bottom=df_subset["Connect_Time(s)"], label="TLS Handshake Time", color="orange", alpha=0.7)
+        plt.bar(x_positions, df_subset["Total_Time(s)"], bottom=df_subset["TLS_Handshake(s)"], label="Total Time", color="gray", alpha=0.7)
+        
         plt.xlabel("Entry Number in CSV")
         plt.ylabel("Time (s)")
-        plt.title(f"Averaged Timing Breakdown for TLS Connections (Entries {start_idx+1} to {end_idx})")
-        plt.xticks(x_positions[::10], labels=df_subset.index[::10], rotation=30)
-        plt.legend()
+        plt.title(f"Timing Breakdown for TLS Connections (Entries {start_idx+1} to {end_idx})")
+        plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B\nKEM: {kem}\nSignature: {sig_alg}")
         plt.grid(axis="y", linestyle="--", alpha=0.7)
-        
+
         graph_filename = os.path.join(graphs_dir, f"tls_avg_graph_{start_idx+1}_{end_idx}.png")
         plt.savefig(graph_filename, dpi=300)
         logging.info(f"Grafico salvato: {graph_filename}")
-        
         plt.close()
+
+        # Grafico dell'Elapsed Time
+        plt.figure(figsize=(14, 7))
+        plt.plot(x_positions, df_subset["Elapsed_Time(s)"], label="Elapsed Time", color="blue", marker="o", linestyle="-")
+        
+        plt.xlabel("Entry Number in CSV")
+        plt.ylabel("Elapsed Time (s)")
+        plt.title(f"Elapsed Time per Request (Entries {start_idx+1} to {end_idx})")
+        plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B\nKEM: {kem}\nSignature: {sig_alg}")
+        plt.grid(True, linestyle="--", alpha=0.7)
+
+        graph_filename = os.path.join(graphs_dir, f"elapsed_time_graph_{start_idx+1}_{end_idx}.png")
+        plt.savefig(graph_filename, dpi=300)
+        logging.info(f"Grafico salvato: {graph_filename}")
+        plt.close()
+else:
+    logging.warning("Non ci sono almeno 3 file request_clientX.csv, salto il calcolo della media e la generazione dei grafici.")
