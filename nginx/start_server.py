@@ -1,5 +1,5 @@
 import psutil, csv, time, os  # Import librerie necessarie
-from datetime import datetime  # Per gestione timestamp
+from datetime import datetime  # Rimosso UTC per evitare offset-aware datetimes
 
 def get_next_filename(base_path, base_name, extension):
     """Genera il nome del file con numerazione incrementale."""
@@ -20,7 +20,7 @@ RESOURCE_LOG, _ = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx", "csv")
 OUTPUT_FILE, _ = get_next_filename(FILTERED_LOG_DIR, "monitor_nginx_filtered", "csv")
 
 ACCESS_LOG = "/opt/nginx/logs/access_custom.log"
-EXPECTED_REQUESTS, SAMPLING_INTERVAL = 400, 0.01  # Soglia richieste e intervallo di campionamento
+EXPECTED_REQUESTS, SAMPLING_INTERVAL = 400, 0.1  # Soglia richieste e intervallo di campionamento
 
 def monitor_resources():
     """Monitora le risorse fino al raggiungimento delle richieste attese."""
@@ -39,28 +39,47 @@ def monitor_resources():
                     print(f"Raggiunte {requests_count} richieste, terminazione monitoraggio.")
                     break
 
-            ts = datetime.now().strftime("%d/%b/%Y:%H:%M:%S")
+            unix_time = time.time()  # Timestamp UNIX con precisione millisecondo
+            readable_time = datetime.fromtimestamp(unix_time).strftime("%d/%b/%Y:%H:%M:%S.%f")[:-3]  # Formato leggibile senza fuso orario
             cpu, mem = psutil.cpu_percent(None), psutil.virtual_memory().used / (1024 ** 2)
             net, conns = psutil.net_io_counters(), len([c for c in psutil.net_connections("inet") if c.status == "ESTABLISHED"])
-            w.writerow([ts, cpu, mem, net.bytes_sent, net.bytes_recv, conns]), f.flush()
+            w.writerow([readable_time, cpu, mem, net.bytes_sent, net.bytes_recv, conns]), f.flush()
 
-            print(f"{ts} - CPU: {cpu}%, Mem: {mem}MB, Sent: {net.bytes_sent}, Recv: {net.bytes_recv}, Conn: {conns}")
+            print(f"{readable_time} - CPU: {cpu}%, Mem: {mem}MB, Sent: {net.bytes_sent}, Recv: {net.bytes_recv}, Conn: {conns}")
             time.sleep(SAMPLING_INTERVAL)
 
 def analyze_logs():
     """Analizza i log Nginx per determinare l'intervallo di test."""
     print(f"Analisi del log: {ACCESS_LOG}")
+    
     if not os.path.exists(ACCESS_LOG): 
         print("ERRORE: File log non trovato.")
         return None, None
+
     try:
+        timestamps = []
+        
         with open(ACCESS_LOG, encoding="utf-8") as f:
-            t = [datetime.strptime(l.split()[3][1:], "%d/%b/%Y:%H:%M:%S") for l in f if len(l.split()) >= 10]
-        if not t:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 4:
+                    continue  # Salta righe non valide
+                
+                try:
+                    raw_timestamp = parts[3][1:-1]  # Rimuove le []
+                    unix_time = float(raw_timestamp)  # Converte in float per mantenere i millisecondi
+                    timestamps.append(datetime.fromtimestamp(unix_time))  # Ora senza fuso orario
+                except ValueError:
+                    print(f"Errore parsing timestamp: {parts[3]}")
+                    continue
+
+        if not timestamps:
             print("ERRORE: Nessun timestamp trovato nei log.")
             return None, None
-        print(f"Intervallo richieste: {min(t)} - {max(t)}")
-        return min(t), max(t)
+
+        print(f"Intervallo richieste: {min(timestamps)} - {max(timestamps)}")
+        return min(timestamps), max(timestamps)
+
     except Exception as e:
         print(f"ERRORE nella lettura log: {e}")
         return None, None
@@ -73,9 +92,23 @@ def load_resource_data():
         return []
     try:
         with open(RESOURCE_LOG, encoding="utf-8") as f:
-            data = [{"timestamp": datetime.strptime(r["Timestamp"], "%d/%b/%Y:%H:%M:%S"), "cpu": float(r["CPU (%)"]),
-                     "memory": float(r["Mem (MB)"]), "bytes_sent": int(r["Bytes Sent"]), "bytes_received": int(r["Bytes Recv"]),
-                     "active_connections": int(r["Conn Attive"])} for r in csv.DictReader(f)]
+            data = []
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    readable_time = row["Timestamp"]  # Ora il CSV contiene solo timestamp leggibili
+                    data.append({
+                        "timestamp": datetime.strptime(readable_time, "%d/%b/%Y:%H:%M:%S.%f").replace(tzinfo=None),  # Rimuove fuso orario
+                        "cpu": float(row["CPU (%)"]),
+                        "memory": float(row["Mem (MB)"]),
+                        "bytes_sent": int(row["Bytes Sent"]),
+                        "bytes_received": int(row["Bytes Recv"]),
+                        "active_connections": int(row["Conn Attive"]),
+                    })
+                except ValueError:
+                    print(f"Errore parsing riga: {row}")
+                    continue
+
         print(f"Caricati {len(data)} campionamenti.")
         return data
     except Exception as e:
@@ -90,7 +123,7 @@ def analyze_performance():
         print("ERRORE: Intervallo di test non disponibile.")
         return
 
-    data = [d for d in load_resource_data() if s <= d["timestamp"] <= e]
+    data = [d for d in load_resource_data() if s-5 <= d["timestamp"] <= e]
     if not data:
         print("ERRORE: Nessun dato di monitoraggio nel periodo di test.")
         return
@@ -99,7 +132,7 @@ def analyze_performance():
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(["Timestamp", "CPU (%)", "Mem (MB)", "Bytes Sent", "Bytes Recv", "Conn Attive"])
-            w.writerows([[d["timestamp"], d["cpu"], d["memory"], d["bytes_sent"], d["bytes_received"], d["active_connections"]] for d in data])
+            w.writerows([[d["timestamp"].strftime("%d/%b/%Y:%H:%M:%S.%f")[:-3], d["cpu"], d["memory"], d["bytes_sent"], d["bytes_received"], d["active_connections"]] for d in data])
         print(f"Salvati {len(data)} campionamenti in {OUTPUT_FILE}.")
     except Exception as e:
         print(f"ERRORE nel salvataggio dati: {e}")

@@ -120,7 +120,9 @@ logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {
 
 # Lettura e calcolo delle metriche dai file CSV
 graphs_dir = f"{OUTPUT_DIR}/graphs/"
+system_graphs_dir = f"{MONITOR_DIR}/graphs/"
 os.makedirs(graphs_dir, exist_ok=True)
+os.makedirs(system_graphs_dir, exist_ok=True)
 logging.info("Generazione dei grafici mediati...")
 
 files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")], key=lambda x: int(re.search(r"\d+", x).group()))
@@ -129,60 +131,90 @@ files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_clien
 if len(files) >= 3:
     dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, file)) for file in files]
     
-    # Convertire colonne numeriche
     for df in dataframes:
         for col in ["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", "Cert_Size(B)"]:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Calcolare la media delle misure
     df_numeric = pd.concat(dataframes)[["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", "Cert_Size(B)"]]
     df_avg = df_numeric.groupby(level=0).mean()
     
-    logging.info("### Verifica delle medie calcolate ###")
-    for idx, row in df_avg.head(10).iterrows():
-        logging.info(f"Riga {idx}: Connect Time={row['Connect_Time(s)']:.6f}, TLS Handshake={row['TLS_Handshake(s)']:.6f}, Total Time={row['Total_Time(s)']:.6f}, Elapsed Time={row['Elapsed_Time(s)']:.6f}, Cert Size={row['Cert_Size(B)']:.2f} B")
-    logging.info("### Fine verifica delle medie ###")
-
     cert_size_mean = df_avg["Cert_Size(B)"].mean()
     requests_per_plot = 100
     num_plots = math.ceil(len(df_avg) / requests_per_plot)
-
+    
     for i in range(num_plots):
         start_idx = i * requests_per_plot
         end_idx = min((i + 1) * requests_per_plot, len(df_avg))
         df_subset = df_avg.iloc[start_idx:end_idx]
         x_positions = (df_subset.index + 1)
-
-        # Grafico a barre con legenda aggiornata
+        
         plt.figure(figsize=(14, 7))
         plt.bar(x_positions, df_subset["Connect_Time(s)"], label="Connect Time", color="red", alpha=0.7)
         plt.bar(x_positions, df_subset["TLS_Handshake(s)"], bottom=df_subset["Connect_Time(s)"], label="TLS Handshake Time", color="orange", alpha=0.7)
         plt.bar(x_positions, df_subset["Total_Time(s)"], bottom=df_subset["TLS_Handshake(s)"], label="Total Time", color="gray", alpha=0.7)
-        
         plt.xlabel("Entry Number in CSV")
         plt.ylabel("Time (s)")
         plt.title(f"Timing Breakdown for TLS Connections (Entries {start_idx+1} to {end_idx})")
         plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B\nKEM: {kem}\nSignature: {sig_alg}")
         plt.grid(axis="y", linestyle="--", alpha=0.7)
-
         graph_filename = os.path.join(graphs_dir, f"tls_avg_graph_{start_idx+1}_{end_idx}.png")
         plt.savefig(graph_filename, dpi=300)
         logging.info(f"Grafico salvato: {graph_filename}")
         plt.close()
-
-        # Grafico dell'Elapsed Time
+        
         plt.figure(figsize=(14, 7))
         plt.plot(x_positions, df_subset["Elapsed_Time(s)"], label="Elapsed Time", color="blue", marker="o", linestyle="-")
-        
         plt.xlabel("Entry Number in CSV")
         plt.ylabel("Elapsed Time (s)")
         plt.title(f"Elapsed Time per Request (Entries {start_idx+1} to {end_idx})")
         plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B\nKEM: {kem}\nSignature: {sig_alg}")
         plt.grid(True, linestyle="--", alpha=0.7)
-
         graph_filename = os.path.join(graphs_dir, f"elapsed_time_graph_{start_idx+1}_{end_idx}.png")
         plt.savefig(graph_filename, dpi=300)
         logging.info(f"Grafico salvato: {graph_filename}")
         plt.close()
-else:
-    logging.warning("Non ci sono almeno 3 file request_clientX.csv, salto il calcolo della media e la generazione dei grafici.")
+
+monitor_files = sorted([f for f in os.listdir(MONITOR_DIR) if f.startswith("system_client") and f.endswith(".csv")])
+
+if len(monitor_files) >= 3:
+    monitor_dataframes = [pd.read_csv(os.path.join(MONITOR_DIR, file)) for file in monitor_files]
+
+    # Definiamo il numero fisso di campioni
+    NUM_SAMPLES = 100
+
+    # Interpoliamo ogni serie per ottenere esattamente NUM_SAMPLES campioni
+    interpolated_dfs = []
+    for df in monitor_dataframes:
+        df["Index"] = range(len(df))  # Creiamo un indice numerico
+        df_interpolated = df.set_index("Index").reindex(range(NUM_SAMPLES)).interpolate(method='linear')
+        interpolated_dfs.append(df_interpolated)
+    
+    # Uniamo i dati interpolati e calcoliamo la media
+    df_monitor_concat = pd.concat(interpolated_dfs).groupby(level=0).mean()
+    sample_indices = list(range(1, NUM_SAMPLES + 1))
+
+    # Grafico per la CPU utilizzata
+    plt.figure(figsize=(14, 7))
+    plt.plot(sample_indices, df_monitor_concat["CPU_Usage(%)"], label="CPU Usage (%)", color="green", marker="o", linestyle="-")
+    plt.xlabel("Sample Number")
+    plt.ylabel("CPU Usage (%)")
+    plt.title("Average CPU Usage over Time (Normalized)")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.7)
+    graph_filename = os.path.join(system_graphs_dir, "cpu_usage_graph.png")
+    plt.savefig(graph_filename, dpi=300)
+    logging.info(f"Grafico salvato: {graph_filename}")
+    plt.close()
+
+    # Grafico per la memoria utilizzata
+    plt.figure(figsize=(14, 7))
+    plt.plot(sample_indices, df_monitor_concat["Memory_Usage(MB)"], label="Memory Usage (MB)", color="purple", marker="o", linestyle="-")
+    plt.xlabel("Sample Number")
+    plt.ylabel("Memory Usage (MB)")
+    plt.title("Average Memory Usage over Time (Normalized)")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.7)
+    graph_filename = os.path.join(system_graphs_dir, "memory_usage_graph.png")
+    plt.savefig(graph_filename, dpi=300)
+    logging.info(f"Grafico salvato: {graph_filename}")
+    plt.close()
