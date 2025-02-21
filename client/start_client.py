@@ -178,43 +178,65 @@ monitor_files = sorted([f for f in os.listdir(MONITOR_DIR) if f.startswith("syst
 
 if len(monitor_files) >= 3:
     monitor_dataframes = [pd.read_csv(os.path.join(MONITOR_DIR, file)) for file in monitor_files]
-
-    # Definiamo il numero fisso di campioni
-    NUM_SAMPLES = 100
-
-    # Interpoliamo ogni serie per ottenere esattamente NUM_SAMPLES campioni
-    interpolated_dfs = []
-    for df in monitor_dataframes:
-        df["Index"] = range(len(df))  # Creiamo un indice numerico
-        df_interpolated = df.set_index("Index").reindex(range(NUM_SAMPLES)).interpolate(method='linear')
-        interpolated_dfs.append(df_interpolated)
     
-    # Uniamo i dati interpolati e calcoliamo la media
-    df_monitor_concat = pd.concat(interpolated_dfs).groupby(level=0).mean()
-    sample_indices = list(range(1, NUM_SAMPLES + 1))
+    # Convertire i timestamp in formato datetime e calcolare il range temporale
+    for df in monitor_dataframes:
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+    
+    # Trovare il range temporale minimo tra tutti i test
+    min_range = min([(df["Timestamp"].max() - df["Timestamp"].min()).total_seconds() for df in monitor_dataframes])
+    
+    # Definire la finestra temporale fissa per il campionamento
+    TIME_WINDOW = 0.1  # 100 ms tra un campione e l'altro
+    num_samples = min(100, int(min_range / TIME_WINDOW))  # Limitare a massimo 100 punti
+    
+    logging.info(f"Range temporale minimo calcolato: {min_range:.2f} secondi")
+    logging.info(f"Finestra temporale fissa utilizzata: {TIME_WINDOW:.2f} secondi")
 
-    # Grafico per la CPU utilizzata
-    plt.figure(figsize=(14, 7))
-    plt.plot(sample_indices, df_monitor_concat["CPU_Usage(%)"], label="CPU Usage (%)", color="green", marker="o", linestyle="-")
-    plt.xlabel("Sample Number")
-    plt.ylabel("CPU Usage (%)")
-    plt.title("Average CPU Usage over Time (Normalized)")
-    plt.legend()
-    plt.grid(True, linestyle="--", alpha=0.7)
-    graph_filename = os.path.join(system_graphs_dir, "cpu_usage_graph.png")
-    plt.savefig(graph_filename, dpi=300)
-    logging.info(f"Grafico salvato: {graph_filename}")
-    plt.close()
+    truncated_dfs = []
+    for df in monitor_dataframes:
+        df = df[df["Timestamp"] <= (df["Timestamp"].min() + pd.Timedelta(seconds=min_range))]  # Troncare al range minimo
+        df = df.copy()  # Creiamo una copia del DataFrame per evitare SettingWithCopyWarning
+        df.loc[:, "Index"] = (df["Timestamp"] - df["Timestamp"].min()).dt.total_seconds() // TIME_WINDOW
+        df_truncated = df.groupby("Index").mean().reset_index()  # Raggruppare i dati per finestra temporale e mantenere Index
+        truncated_dfs.append(df_truncated)
+    
+    # Unire e calcolare la media tra i test
+    df_monitor_avg = pd.concat(truncated_dfs).groupby("Index").mean().reset_index()
+    
+    # Convertire l'indice in millisecondi per la rappresentazione nei grafici
+    sample_indices = (df_monitor_avg["Index"] * TIME_WINDOW * 1000).tolist()
 
-    # Grafico per la memoria utilizzata
-    plt.figure(figsize=(14, 7))
-    plt.plot(sample_indices, df_monitor_concat["Memory_Usage(MB)"], label="Memory Usage (MB)", color="purple", marker="o", linestyle="-")
-    plt.xlabel("Sample Number")
-    plt.ylabel("Memory Usage (MB)")
-    plt.title("Average Memory Usage over Time (Normalized)")
-    plt.legend()
-    plt.grid(True, linestyle="--", alpha=0.7)
-    graph_filename = os.path.join(system_graphs_dir, "memory_usage_graph.png")
-    plt.savefig(graph_filename, dpi=300)
-    logging.info(f"Grafico salvato: {graph_filename}")
-    plt.close()
+    # Suddividere i dati in più grafici se superano 100 punti
+    num_graphs = math.ceil(num_samples / 100)
+    for i in range(num_graphs):
+        start_idx = i * 100
+        end_idx = min((i + 1) * 100, num_samples)
+        df_subset = df_monitor_avg.iloc[start_idx:end_idx]
+        x_positions = sample_indices[start_idx:end_idx]
+    
+        # Grafico per la CPU utilizzata
+        plt.figure(figsize=(14, 7))
+        plt.plot(x_positions, df_subset["CPU_Usage(%)"], label="CPU Usage (%)", color="green", marker="o", linestyle="-")
+        plt.xlabel("Time (ms)")
+        plt.ylabel("CPU Usage (%)")
+        plt.title(f"Average CPU Usage over Time (Samples {start_idx+1} to {end_idx})")
+        plt.legend(title=f"Range: {min_range:.2f}s, Window: {TIME_WINDOW * 1000:.2f}ms")
+        plt.grid(True, linestyle="--", alpha=0.7)
+        graph_filename = os.path.join(system_graphs_dir, f"cpu_usage_graph_{start_idx+1}_{end_idx}.png")
+        plt.savefig(graph_filename, dpi=300)
+        logging.info(f"Grafico salvato: {graph_filename}")
+        plt.close()
+    
+        # Grafico per la memoria utilizzata
+        plt.figure(figsize=(14, 7))
+        plt.plot(x_positions, df_subset["Memory_Usage(MB)"], label="Memory Usage (MB)", color="purple", marker="o", linestyle="-")
+        plt.xlabel("Time (ms)")
+        plt.ylabel("Memory Usage (MB)")
+        plt.title(f"Average Memory Usage over Time (Samples {start_idx+1} to {end_idx})")
+        plt.legend(title=f"Range: {min_range:.2f}s, Window: {TIME_WINDOW * 1000:.2f}ms")
+        plt.grid(True, linestyle="--", alpha=0.7)
+        graph_filename = os.path.join(system_graphs_dir, f"memory_usage_graph_{start_idx+1}_{end_idx}.png")
+        plt.savefig(graph_filename, dpi=300)
+        logging.info(f"Grafico salvato: {graph_filename}")
+        plt.close()

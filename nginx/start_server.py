@@ -123,7 +123,7 @@ def analyze_performance():
         print("ERRORE: Intervallo di test non disponibile.")
         return
 
-    data = [d for d in load_resource_data() if s-5 <= d["timestamp"] <= e]
+    data = [d for d in load_resource_data() if s <= d["timestamp"] <= e]
     if not data:
         print("ERRORE: Nessun dato di monitoraggio nel periodo di test.")
         return
