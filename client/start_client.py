@@ -31,11 +31,11 @@ active_requests, active_requests_lock, global_stats = 0, Lock(), {"cpu_usage": [
 def monitor_system():
     """Monitora CPU, memoria e connessioni attive."""
     with open(MONITOR_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f); writer.writerow(["Timestamp", "CPU_Usage(%)", "Memory_Usage(MB)", "Active_TLS"])
+        writer = csv.writer(f); writer.writerow(["Timestamp", "CPU_Usage(%)", "Memory_Usage(%)", "Active_TLS"])
         stable_counter = 0
         while True:
             with active_requests_lock: tls = active_requests
-            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"), psutil.cpu_percent(), psutil.virtual_memory().used / (1024 ** 2), tls])
+            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"), psutil.cpu_percent(), psutil.virtual_memory().percent, tls])
             if tls == 0: stable_counter += 1
             if stable_counter >= 5: break
             time.sleep(0.01)
@@ -126,9 +126,9 @@ logging.info("Generazione dei grafici mediati...")
 files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")], key=lambda x: int(re.search(r"\d+", x).group()))
 monitor_files = sorted([f for f in os.listdir(MONITOR_DIR) if f.startswith("system_client") and f.endswith(".csv")])
 
-if len(files) >= 3:  # Unico controllo per entrambi i dataset
+if len(files) >= 3:
     dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in files]
-    df_avg = pd.concat(dataframes).apply(pd.to_numeric, errors='coerce').groupby(level=0).mean()
+    df_avg = pd.concat(dataframes)[["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", "Cert_Size(B)"]].groupby(level=0).mean()
     cert_size_mean, num_plots = df_avg["Cert_Size(B)"].mean(), math.ceil(len(df_avg) / 100)
 
     for i in range(num_plots):
@@ -172,28 +172,37 @@ if len(files) >= 3:  # Unico controllo per entrambi i dataset
     logging.info(f"Finestra temporale fissa utilizzata: {0.1:.2f} secondi")
     logging.info(f"Numero di campioni generati: {num_samples}")
 
-    df_monitor_avg = pd.concat(
-        [df[df["Timestamp"] <= (df["Timestamp"].min() + pd.Timedelta(seconds=min_range))] \
+    df_monitor_avg = pd.concat([df[df["Timestamp"] <= (df["Timestamp"].min() + pd.Timedelta(seconds=min_range))] \
          .assign(Index=lambda df: (df["Timestamp"] - df["Timestamp"].min()).dt.total_seconds() // 0.1) \
-         .groupby("Index").mean().reset_index() for df in monitor_dataframes]
-    ).groupby("Index").mean().reset_index()
+         .groupby("Index").mean().reset_index() for df in monitor_dataframes]).groupby("Index").mean().reset_index()
 
     sample_indices = (df_monitor_avg["Index"] * 0.1 * 1000).tolist()
 
-    for metric, color, name in [("CPU_Usage(%)", "green", "cpu"), ("Memory_Usage(MB)", "purple", "memory")]:
-        num_graphs = math.ceil(num_samples / 100)
-        for i in range(num_graphs):
-            start_idx, end_idx = i * 100, min((i + 1) * 100, num_samples)
-            df_subset, x_positions = df_monitor_avg.iloc[start_idx:end_idx], sample_indices[start_idx:end_idx]
-            
-            plt.figure(figsize=(14, 7))
-            plt.plot(x_positions, df_subset[metric], label=f"{name.upper()} Usage", color=color, marker="o", linestyle="-")
-            plt.xlabel("Time (ms)")
-            plt.ylabel(f"{name.upper()} Usage")
-            plt.title(f"Average {name.upper()} Usage over Time (Samples {start_idx+1} to {end_idx})")
-            plt.legend(title=f"Range: {min_range:.2f}s, Window: {0.1 * 1000:.2f}ms")
-            plt.grid(True, linestyle="--", alpha=0.7)
-            filename = os.path.join(system_graphs_dir, f"{name}_usage_graph_{start_idx+1}_{end_idx}.png")
-            plt.savefig(filename, dpi=300)
-            plt.close()
-            logging.info(f"Grafico salvato: {filename}")
+    # Ottieni il totale della memoria e dei core per la legenda
+    total_memory = psutil.virtual_memory().total / (1024 ** 2)  # MB
+    total_cores = psutil.cpu_count(logical=True)  # Numero totale di core CPU
+
+    # Determina il numero di grafici da generare in base al numero di dati
+    num_graphs = math.ceil(num_samples / 100)
+
+    for i in range(num_graphs):
+        start_idx, end_idx = i * 100, min((i + 1) * 100, num_samples)
+        df_subset = df_monitor_avg.iloc[start_idx:end_idx]
+        x_positions = sample_indices[start_idx:end_idx]
+
+        # Creazione del grafico combinato CPU e Memoria
+        plt.figure(figsize=(14, 7))
+        plt.plot(x_positions, df_subset["CPU_Usage(%)"], label="CPU Usage (%)", color="green", marker="o", linestyle="-")
+        plt.plot(x_positions, df_subset["Memory_Usage(%)"], label="Memory Usage (%)", color="purple", marker="o", linestyle="-")
+
+        plt.xlabel("Time (ms)")
+        plt.ylabel("Usage (%)")
+        plt.title(f"CPU & Memory Usage Over Time (Samples {start_idx+1} to {end_idx})")
+        plt.legend(title=f"CPU Total Cores: {total_cores} | Total RAM: {total_memory:.2f} MB", loc="upper right")
+        plt.grid(True, linestyle="--", alpha=0.7)
+
+        # Salva il grafico con un nome diverso per ogni porzione di dati
+        filename = os.path.join(system_graphs_dir, f"cpu_memory_usage_{start_idx+1}_{end_idx}.png")
+        plt.savefig(filename, dpi=300)
+        plt.close()
+        logging.info(f"Grafico salvato: {filename}")
