@@ -41,8 +41,8 @@ def execute_request(req_num):
     try:
         start = time.time()
         process = subprocess.Popen(CURL_COMMAND_TEMPLATE + ["--trace", trace_file, "-o", "/dev/null"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, _ = process.communicate()
         elapsed_time = time.time() - start
+        stdout, _ = process.communicate()
         bytes_sent = bytes_received = 0
         previous_line = ""
         if os.path.exists(trace_file):
@@ -54,7 +54,6 @@ def execute_request(req_num):
                     if match_tls := re.search(r"SSL connection using TLSv1.3 / .* / (\S+) / (\S+)", line): kem, sig_alg = match_tls.groups()
                     if "TLS handshake, Certificate (11):" in previous_line and (match_cert_size := re.search(r"<= Recv SSL data, (\d+)", line)): cert_size = int(match_cert_size.group(1))
                     previous_line = line
-
         try:
             metrics = stdout.strip().rsplit(", ", 1)
             http_status = metrics[-1].strip()
@@ -67,7 +66,6 @@ def execute_request(req_num):
             success_status = "Failure"
         logging.info(f"Richiesta {req_num}: {success_status} | Connessione={connect_time}s, Handshake={handshake_time}s, Totale={total_time}s, Tempo={elapsed_time}s, Inviati={bytes_sent}, Ricevuti={bytes_received}, HTTP={http_status}, KEM={kem}, Firma={sig_alg}, Cert_Size={cert_size}B")
         return [req_num, connect_time, handshake_time, total_time, elapsed_time, success_status, bytes_sent, bytes_received, kem, sig_alg, cert_size]
-
     except Exception as e:
         logging.error(f"Errore richiesta {req_num}: {e}")
         return [req_num, None, None, None, None, "Failure", 0, 0, kem, sig_alg, cert_size]
@@ -77,7 +75,8 @@ def execute_request(req_num):
 def generate_performance_graphs():
     """Genera i grafici relativi alle metriche di prestazione raccolte."""
     logging.info("Generazione dei grafici mediati...")
-    files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")], key=lambda x: int(re.search(r"\d+", x).group()))
+    
+    files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
     monitor_files = sorted([f for f in os.listdir(MONITOR_DIR) if f.startswith("system_client") and f.endswith(".csv")])
     
     if len(files) >= 3:
@@ -91,19 +90,27 @@ def generate_performance_graphs():
             df_subset = df_avg.iloc[start_idx:end_idx]
             x_positions = (df_avg.index[start_idx:end_idx] + 1)
 
-            def save_plot(x, y, label, color, title, filename):
-                plt.figure(figsize=(14, 7))
-                plt.plot(x, y, label=label, color=color, marker="o", linestyle="-")
-                plt.xlabel("Entry Number in CSV")
-                plt.ylabel(label)
-                plt.title(f"{title} (Entries {start_idx+1} to {end_idx})")
-                plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B")
-                plt.grid(True, linestyle="--", alpha=0.7)
-                plt.savefig(filename, dpi=300)
-                plt.close()
-                logging.info(f"Grafico salvato: {filename}")
+            plt.figure(figsize=(14, 7))
+            plt.plot(x_positions, df_subset["Elapsed_Time(s)"], label="Elapsed Time (s)", color="blue", marker="o", linestyle="-")
+            plt.xlabel("Entry Number in CSV")
+            plt.ylabel("Elapsed Time (s)")
+            plt.title(f"Elapsed Time per Request (Entries {start_idx+1} to {end_idx})")
+            plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B")
+            plt.grid(True, linestyle="--", alpha=0.7)
+            plt.savefig(os.path.join(GRAPH_DIR, f"elapsed_time_graph_{start_idx+1}_{end_idx}.png"), dpi=300)
+            plt.close()
 
-            save_plot(x_positions, df_subset["Elapsed_Time(s)"], "Elapsed Time (s)", "blue", "Elapsed Time per Request", os.path.join(GRAPH_DIR, f"elapsed_time_graph_{start_idx+1}_{end_idx}.png"))
+            plt.figure(figsize=(14, 7))
+            plt.bar(x_positions, df_subset["Connect_Time(s)"], label="Connect Time", color="red", alpha=0.7)
+            plt.bar(x_positions, df_subset["TLS_Handshake(s)"], bottom=df_subset["Connect_Time(s)"], label="TLS Handshake Time", color="orange", alpha=0.7)
+            plt.bar(x_positions, df_subset["Total_Time(s)"], bottom=df_subset["TLS_Handshake(s)"], label="Total Time", color="gray", alpha=0.7)
+            plt.xlabel("Entry Number in CSV")
+            plt.ylabel("Time (s)")
+            plt.title(f"Timing Breakdown for TLS Connections (Entries {start_idx+1} to {end_idx})")
+            plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B")
+            plt.grid(axis="y", linestyle="--", alpha=0.7)
+            plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_{start_idx+1}_{end_idx}.png"), dpi=300)
+            plt.close()
 
         monitor_dataframes = [pd.read_csv(os.path.join(MONITOR_DIR, f)) for f in monitor_files]
         for df in monitor_dataframes:
@@ -111,8 +118,6 @@ def generate_performance_graphs():
         
         min_range = min((df["Timestamp"].max() - df["Timestamp"].min()).total_seconds() for df in monitor_dataframes)
         num_samples = int(min_range / 0.1)
-        
-        logging.info(f"Range temporale minimo calcolato: {min_range:.2f} secondi")
         
         df_monitor_avg = pd.concat([
             df[df["Timestamp"] <= (df["Timestamp"].min() + pd.Timedelta(seconds=min_range))]
@@ -139,11 +144,9 @@ def generate_performance_graphs():
             plt.title(f"CPU & Memory Usage Over Time (Samples {start_idx+1} to {end_idx})")
             plt.legend(title=f"CPU Total Cores: {total_cores} | Total RAM: {total_memory:.2f} MB", loc="upper right")
             plt.grid(True, linestyle="--", alpha=0.7)
-
-            filename = os.path.join(SYSTEM_GRAPH_DIR, f"cpu_memory_usage_{start_idx+1}_{end_idx}.png")
-            plt.savefig(filename, dpi=300)
+            plt.savefig(os.path.join(SYSTEM_GRAPH_DIR, f"cpu_memory_usage_{start_idx+1}_{end_idx}.png"), dpi=300)
             plt.close()
-            logging.info(f"Grafico salvato: {filename}")
+
 
 OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
 MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
