@@ -1,7 +1,0 @@
-FROM openquantumsafe/nginx:latest
-
-# Passa a root per eventuali modifiche
-USER root
-
-# Installa Python e librerie necessarie
-RUN apk update && apk add --no-cache python3 py3-pip py3-psutil
