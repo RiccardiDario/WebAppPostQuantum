@@ -4,6 +4,8 @@ networks:
     ipam:
       config:
         - subnet: 192.168.1.0/24
+volumes:
+  certs-volume:
 
 services:
   server:
@@ -19,7 +21,7 @@ services:
     image: openquantumsafe/oqs-ossl3:latest
     container_name: cert-generator
     volumes:
-      - ./certs:/certs
+      -  certs-volume:/certs
       - ./cert-generator:/cert-generator
     stdin_open: true
     env_file:
@@ -37,7 +39,7 @@ services:
     ports:
       - "4433:4433"
     volumes:
-      - ./certs:/etc/nginx/certs/
+      -  certs-volume:/etc/nginx/certs/
       - ./report:/opt/nginx/output
       - ./nginx/start_server.py:/opt/nginx/start_server.py
       - ./nginx/nginx.conf:/opt/nginx/nginx.conf
@@ -56,7 +58,7 @@ services:
     container_name: client_analysis
     volumes:
       - ./report:/app/output
-      - ./certs:/opt/certs
+      -  certs-volume:/opt/certs
       #- ./tls_keys:/tls_keys
       - ./client/start_client_serie.py:/app/start_client_serie.py
     depends_on:
