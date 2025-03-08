@@ -193,7 +193,7 @@ def update_average_report(request_results):
     with open(avg_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["Execution_Index", "Avg_Connect_Time(s)", "Avg_Handshake_Time(s)", "Avg_Total_Time(s)", "Avg_Elapsed_Time(s)", "Avg_CPU_Usage(%)", "Avg_RAM_Usage(%)"])
+            writer.writerow(["Execution_Index", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", "Client_Avg_RAM_Usage(%)"])
         writer.writerow(new_row)
 
     logging.info(f"Report delle medie aggiornato: {avg_file} con CPU={avg_cpu}% e RAM={avg_ram}%")
