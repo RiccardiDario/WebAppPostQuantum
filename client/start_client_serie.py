@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "kyber512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
@@ -148,7 +148,7 @@ def generate_performance_graphs():
             plt.close()
 
 def update_average_report(request_results):
-    """Genera o aggiorna il report delle medie delle metriche con CPU e RAM senza usare round()."""
+    """Genera o aggiorna il report delle medie delle metriche con CPU e RAM."""
     avg_file = os.path.join(OUTPUT_DIR, "average_metrics.csv")
 
     # Filtra solo le richieste di successo
