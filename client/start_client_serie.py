@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem1024", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
@@ -42,7 +42,7 @@ def execute_request(req_num):
         start = time.time()
         process = subprocess.Popen(CURL_COMMAND_TEMPLATE + ["--trace", trace_file, "-o", "/dev/null"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, _ = process.communicate()
-        elapsed_time = time.time() - start
+        elapsed_time = round((time.time() - start) * 1000, 3)
         bytes_sent = bytes_received = 0
         previous_line = ""
         if os.path.exists(trace_file):
@@ -51,26 +51,27 @@ def execute_request(req_num):
                     m_sent, m_recv = re.search(r"(=> Send SSL data, (\d+)|Send header, (\d+))", line), re.search(r"(<= Recv SSL data, (\d+)|Recv header, (\d+)|Recv data, (\d+))", line)
                     bytes_sent += int(m_sent.group(2) or m_sent.group(3)) if m_sent else 0
                     bytes_received += int(m_recv.group(2) or m_recv.group(3) or m_recv.group(4)) if m_recv else 0
-                    if match_tls := re.search(r"SSL connection using TLSv1.3 / .* / (\S+) / (\S+)", line): kem, sig_alg = match_tls.groups()
+                    if match_tls := re.search(r"SSL connection using TLSv1.3 / .* / (\S+) / (\S+)", line): kem = match_tls.group(1)
+                    if match_sig := re.search(r"Certificate level 1: .* signed using ([^,]+)", line): sig_alg = match_sig.group(1)
                     if "TLS handshake, Certificate (11):" in previous_line and (match_cert_size := re.search(r"<= Recv SSL data, (\d+)", line)): cert_size = int(match_cert_size.group(1))
                     previous_line = line
         try:
             metrics = stdout.strip().rsplit(", ", 1)
             http_status = metrics[-1].strip()
-            metrics_dict = {k: float(v.replace("s", "")) for k, v in (item.split(": ") for item in metrics[0].split(", "))}
-            connect_time, handshake_time, total_time = metrics_dict["Connect Time"], metrics_dict["TLS Handshake"], metrics_dict["Total Time"]
+            metrics_dict = {k + " (ms)": round(float(v[:-1]) * 1000, 3) for k, v in (item.split(": ") for item in metrics[0].split(", "))}
+            connect_time, handshake_time, total_time = metrics_dict.get("Connect Time (ms)"), metrics_dict.get("TLS Handshake (ms)"), metrics_dict.get("Total Time (ms)")
             success_status = "Success" if http_status == "200" else "Failure"
         except Exception:
             logging.error(f"Errore parsing metriche richiesta {req_num}")
             connect_time = handshake_time = total_time = None
             success_status = "Failure"
-        logging.info(f"Richiesta {req_num}: {success_status} | Connessione={connect_time}s, Handshake={handshake_time}s, Totale={total_time}s, Tempo={elapsed_time}s, Inviati={bytes_sent}, Ricevuti={bytes_received}, HTTP={http_status}, KEM={kem}, Firma={sig_alg}, Cert_Size={cert_size}B")
+        logging.info(f"Richiesta {req_num}: {success_status} | Connessione={connect_time} ms, Handshake={handshake_time} ms, Total_Time={total_time} ms, ElaspsedTime={elapsed_time} ms, Inviati={bytes_sent}, Ricevuti={bytes_received}, HTTP={http_status}, KEM={kem}, Firma={sig_alg}, Cert_Size={cert_size} B")
         return [req_num, connect_time, handshake_time, total_time, elapsed_time, success_status, bytes_sent, bytes_received, kem, sig_alg, cert_size]
     except Exception as e:
         logging.error(f"Errore richiesta {req_num}: {e}")
         return [req_num, None, None, None, None, "Failure", 0, 0, kem, sig_alg, cert_size]
     finally:
-        with active_requests_lock: active_requests -= 1 
+        with active_requests_lock: active_requests -= 1
 
 def generate_performance_graphs():
     """Genera i grafici relativi alle metriche di prestazione raccolte."""
@@ -202,7 +203,7 @@ OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
 MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
 with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
-    writer.writerow(["Request_Number", "Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", 
+    writer.writerow(["Request_Number", "Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)", 
                      "Status", "Success_Count", "Bytes_Sent(B)", "Bytes_Received(B)", "KEM", "Signature", "Cert_Size(B)"])
     
     monitor_thread = Thread(target=monitor_system); monitor_thread.start()
