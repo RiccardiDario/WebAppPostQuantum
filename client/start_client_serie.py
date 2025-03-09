@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem1024", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
@@ -198,6 +198,63 @@ def update_average_report(request_results):
 
     logging.info(f"Report delle medie aggiornato: {avg_file} con CPU={avg_cpu}% e RAM={avg_ram}%")
 
+def generate_cumulative_boxplots():
+    """Genera boxplot cumulativi per le metriche Connect Time, TLS Handshake Time, Total Time ed Elapsed Time."""
+    logging.info("Generazione dei boxplot cumulativi...")
+    files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
+    
+    if not files: 
+        logging.warning("Nessun file di dati trovato per generare i grafici.")
+        return
+
+    df_list = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in files]
+    df = pd.concat(df_list, ignore_index=True)
+    df = df[df["Status"] == "Success"]
+
+    if df.empty:
+        logging.warning("Nessuna richiesta di successo, non verranno generati grafici.")
+        return
+
+    df["Config"] = df.apply(lambda row: f"{row['KEM']} - {row['Signature']}", axis=1)
+
+    metrics = {
+        "Connect_Time(ms)": "Connect Time (ms)",
+        "TLS_Handshake(ms)": "Handshake Time (ms)",
+        "Total_Time(ms)": "Total Time (ms)",
+        "Elapsed_Time(ms)": "Elapsed Time (ms)"
+    }
+
+    for metric, ylabel in metrics.items():
+        plt.figure(figsize=(12, 6))
+
+        # Creazione del boxplot con outlier visibili
+        boxplot = df.boxplot(column=metric, by="Config", vert=True, grid=False, patch_artist=True, whis=2.0)
+
+        # Calcolo del range dei dati per adattare l'asse Y
+        min_val = df[metric].min()
+        max_val = df[metric].max()
+        Q1 = df[metric].quantile(0.25)
+        Q3 = df[metric].quantile(0.75)
+        IQR = Q3 - Q1
+
+        # Determiniamo un range "migliore" per l'asse Y:
+        lower_bound = max(min_val, Q1 - 1.5 * IQR)  # Non partire per forza da zero
+        upper_bound = min(max_val, Q3 + 2.5 * IQR)  # Consentire qualche outlier ma evitare distorsioni
+
+        plt.ylim([lower_bound, upper_bound])  # Adatta l'asse Y dinamicamente
+
+        plt.xticks(rotation=45, ha="right")
+        plt.xlabel("KEM - Signature")
+        plt.ylabel(ylabel)
+        plt.suptitle("")
+        plt.tight_layout()
+
+        graph_path = os.path.join(GRAPH_DIR, f"{metric}_boxplot.png")
+        plt.savefig(graph_path, dpi=300)
+        plt.close()
+
+        logging.info(f"Boxplot salvato: {graph_path}")
+
 
 OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
 MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
@@ -225,5 +282,6 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         writer.writerow(result[:6] + [f"{success_count}/{NUM_REQUESTS}"] + result[6:])
 
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
+generate_cumulative_boxplots()
 generate_performance_graphs()
 update_average_report(request_results)
