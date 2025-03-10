@@ -3,17 +3,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p521_mlkem1024", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
 OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR = "/app/output/request_logs", "/app/output/system_logs", "/app/logs/"
 for directory in (TRACE_LOG_DIR, OUTPUT_DIR, MONITOR_DIR): os.makedirs(directory, exist_ok=True)
-GRAPH_DIR, SYSTEM_GRAPH_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/graphs/"
-for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR]: os.makedirs(d, exist_ok=True)
+GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/graphs/", f"{OUTPUT_DIR}/avg/"
+for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 
 active_requests, active_requests_lock, global_stats = 0, Lock(), {"cpu_usage": [], "memory_usage": []}
-NUM_REQUESTS, kem, sig_alg = 400, "Unknown", "Unknown"
+NUM_REQUESTS, kem, sig_alg = 500, "Unknown", "Unknown"
 
 def get_next_filename(base_path, base_name, extension):
     """Genera il nome del file con numerazione incrementale."""
@@ -74,83 +74,98 @@ def execute_request(req_num):
         with active_requests_lock: active_requests -= 1
 
 def generate_performance_graphs():
-    """Genera i grafici relativi alle metriche di prestazione raccolte."""
+    """Genera i grafici relativi alle metriche di prestazione per ogni batch di 3 esecuzioni."""
     logging.info("Generazione dei grafici mediati...")
-    
+
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
     monitor_files = sorted([f for f in os.listdir(MONITOR_DIR) if f.startswith("system_client") and f.endswith(".csv")])
-    
-    if len(files) >= 3:
-        dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in files]
-        df_avg = pd.concat(dataframes)[["Connect_Time(s)", "TLS_Handshake(s)", "Total_Time(s)", "Elapsed_Time(s)", "Cert_Size(B)"]].groupby(level=0).mean()
+
+    for i in range(0, len(files), 3):
+        batch_files = files[i:i+3]
+        monitor_batch_files = monitor_files[i:i+3]
+
+        if len(batch_files) < 3:
+            logging.warning(f"Solo {len(batch_files)} file nel batch {i//3 + 1}, salto la generazione dei grafici.")
+            continue
+
+        dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in batch_files]
+        df_avg = pd.concat(dataframes)[["Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)", "Cert_Size(B)"]].groupby(level=0).mean()
         cert_size_mean = df_avg["Cert_Size(B)"].mean()
         num_plots = math.ceil(len(df_avg) / 100)
-        
-        for i in range(num_plots):
-            start_idx, end_idx = i * 100, min((i + 1) * 100, len(df_avg))
+
+        # **Recupero dinamico di KEM e firma**
+        kem, sig_alg = get_kem_sig_from_csv(os.path.join(OUTPUT_DIR, batch_files[0]))
+
+        for j in range(num_plots):
+            start_idx, end_idx = j * 100, min((j + 1) * 100, len(df_avg))
             df_subset = df_avg.iloc[start_idx:end_idx]
             x_positions = (df_avg.index[start_idx:end_idx] + 1)
 
             plt.figure(figsize=(14, 7))
-            plt.plot(x_positions, df_subset["Elapsed_Time(s)"], label="Elapsed Time (s)", color="blue", marker="o", linestyle="-")
-            plt.xlabel("Entry Number in CSV")
-            plt.ylabel("Elapsed Time (s)")
-            plt.title(f"Elapsed Time per Request (Entries {start_idx+1} to {end_idx})")
+            plt.plot(x_positions, df_subset["Elapsed_Time(ms)"], label="Elapsed Time (ms)", color="blue", marker="o", linestyle="-")
+            plt.xlabel("Request Completion Order")
+            plt.ylabel("Elapsed Time (ms)")
+            plt.title(f"Elapsed Time per Request\nKEM: {kem} | Signature: {sig_alg}")
             plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B")
             plt.grid(True, linestyle="--", alpha=0.7)
-            plt.savefig(os.path.join(GRAPH_DIR, f"elapsed_time_graph_{start_idx+1}_{end_idx}.png"), dpi=300)
+            plt.savefig(os.path.join(GRAPH_DIR, f"elapsed_time_graph_batch_{i//3 + 1}_{start_idx+1}_{end_idx}.png"), dpi=300)
             plt.close()
 
             plt.figure(figsize=(14, 7))
-            plt.bar(x_positions, df_subset["Connect_Time(s)"], label="Connect Time", color="red", alpha=0.7)
-            plt.bar(x_positions, df_subset["TLS_Handshake(s)"], bottom=df_subset["Connect_Time(s)"], label="TLS Handshake Time", color="orange", alpha=0.7)
-            plt.bar(x_positions, df_subset["Total_Time(s)"], bottom=df_subset["TLS_Handshake(s)"], label="Total Time", color="gray", alpha=0.7)
-            plt.xlabel("Entry Number in CSV")
-            plt.ylabel("Time (s)")
-            plt.title(f"Timing Breakdown for TLS Connections (Entries {start_idx+1} to {end_idx})")
+            plt.bar(x_positions, df_subset["Connect_Time(ms)"], label="Connect Time", color="red", alpha=0.7)
+            plt.bar(x_positions, df_subset["TLS_Handshake(ms)"], bottom=df_subset["Connect_Time(ms)"], label="TLS Handshake Time", color="orange", alpha=0.7)
+            plt.bar(x_positions, df_subset["Total_Time(ms)"], bottom=df_subset["TLS_Handshake(ms)"], label="Total Time", color="gray", alpha=0.7)
+            plt.xlabel("Request Completion Order")
+            plt.ylabel("Time (ms)")
+            plt.title(f"Timing Breakdown for TLS Connections\nKEM: {kem} | Signature: {sig_alg}")
             plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B")
             plt.grid(axis="y", linestyle="--", alpha=0.7)
-            plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_{start_idx+1}_{end_idx}.png"), dpi=300)
+            plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_batch_{i//3 + 1}_{start_idx+1}_{end_idx}.png"), dpi=300)
             plt.close()
 
-        monitor_dataframes = [pd.read_csv(os.path.join(MONITOR_DIR, f)) for f in monitor_files]
+        # **Gestione dei file di monitoraggio per il sistema**
+        monitor_dataframes = [pd.read_csv(os.path.join(MONITOR_DIR, f)) for f in monitor_batch_files]
         for df in monitor_dataframes:
             df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-        
+
         min_range = min((df["Timestamp"].max() - df["Timestamp"].min()).total_seconds() for df in monitor_dataframes)
         num_samples = int(min_range / 0.1)
-        
+
         df_monitor_avg = pd.concat([
             df[df["Timestamp"] <= (df["Timestamp"].min() + pd.Timedelta(seconds=min_range))]
             .assign(Index=lambda df: (df["Timestamp"] - df["Timestamp"].min()).dt.total_seconds() // 0.1)
             .groupby("Index").mean().reset_index()
             for df in monitor_dataframes
         ]).groupby("Index").mean().reset_index()
-        
+
         sample_indices = (df_monitor_avg["Index"] * 0.1 * 1000).tolist()
         total_memory = psutil.virtual_memory().total / (1024 ** 2)
         total_cores = psutil.cpu_count(logical=True)
-        num_graphs = math.ceil(num_samples / 100)
 
-        for i in range(num_graphs):
-            start_idx, end_idx = i * 100, min((i + 1) * 100, num_samples)
-            df_subset = df_monitor_avg.iloc[start_idx:end_idx]
-            x_positions = sample_indices[start_idx:end_idx]
+        plt.figure(figsize=(14, 7))
+        plt.plot(sample_indices, df_monitor_avg["CPU_Usage(%)"], label="CPU Usage (%)", color="green", marker="o", linestyle="-")
+        plt.plot(sample_indices, df_monitor_avg["Memory_Usage(%)"], label="Memory Usage (%)", color="purple", marker="o", linestyle="-")
+        plt.xlabel("Time (ms)")
+        plt.ylabel("Usage (%)")
+        plt.title(f"Client Resource Usage (Avg. CPU & Memory) Over Time\nKEM: {kem} | Signature: {sig_alg}")
 
-            plt.figure(figsize=(14, 7))
-            plt.plot(x_positions, df_subset["CPU_Usage(%)"], label="CPU Usage (%)", color="green", marker="o", linestyle="-")
-            plt.plot(x_positions, df_subset["Memory_Usage(%)"], label="Memory Usage (%)", color="purple", marker="o", linestyle="-")
-            plt.xlabel("Time (ms)")
-            plt.ylabel("Usage (%)")
-            plt.title(f"CPU & Memory Usage Over Time (Samples {start_idx+1} to {end_idx})")
-            plt.legend(title=f"CPU Total Cores: {total_cores} | Total RAM: {total_memory:.2f} MB", loc="upper right")
-            plt.grid(True, linestyle="--", alpha=0.7)
-            plt.savefig(os.path.join(SYSTEM_GRAPH_DIR, f"cpu_memory_usage_{start_idx+1}_{end_idx}.png"), dpi=300)
-            plt.close()
+        # **Spostare la legenda fuori dal grafico**
+        plt.legend(
+            title=f"KEM: {kem} | Signature: {sig_alg}\nCPU Cores: {total_cores} | Total RAM: {total_memory:.2f} MB",
+            loc="upper left",
+            bbox_to_anchor=(1, 1)  # ← Posiziona la legenda fuori dal grafico
+        )
+
+        plt.grid(True, linestyle="--", alpha=0.7)
+        graph_path = os.path.join(SYSTEM_GRAPH_DIR, f"cpu_memory_usage_batch_{i//3 + 1}.png")
+        plt.savefig(graph_path, dpi=300, bbox_inches="tight")  # ← `bbox_inches="tight"` evita il taglio della legenda
+        plt.close()
+
+        logging.info(f"Grafici generati per il batch {i//3 + 1}")
 
 def update_average_report(request_results):
     """Genera o aggiorna il report delle medie delle metriche con CPU e RAM."""
-    avg_file = os.path.join(OUTPUT_DIR, "average_metrics.csv")
+    avg_file = os.path.join(AVG_DIR, "average_metrics.csv")
 
     # Filtra solo le richieste di successo
     success_results = [r for r in request_results if r[1] is not None]
@@ -198,24 +213,29 @@ def update_average_report(request_results):
 
     logging.info(f"Report delle medie aggiornato: {avg_file} con CPU={avg_cpu}% e RAM={avg_ram}%")
 
+def get_kem_sig_from_csv(csv_file):
+    """Recupera KEM e firma direttamente dal CSV, scegliendo il primo valore univoco disponibile."""
+    df = pd.read_csv(csv_file)
+
+    if "KEM" in df.columns and "Signature" in df.columns:
+        kem_value = df["KEM"].dropna().str.strip().unique()  # Rimuove spazi e caratteri speciali
+        sig_value = df["Signature"].dropna().str.strip().unique()  # Rimuove `\n`
+
+        kem_selected = kem_value[0] if len(kem_value) > 0 else "Unknown"
+        sig_selected = sig_value[0] if len(sig_value) > 0 else "Unknown"
+
+        return kem_selected, sig_selected
+
+    return "Unknown", "Unknown"
+
 def generate_cumulative_boxplots():
-    """Genera boxplot cumulativi per le metriche Connect Time, TLS Handshake Time, Total Time ed Elapsed Time."""
+    """Genera boxplot per ogni metrica con più batch nello stesso grafico."""
     logging.info("Generazione dei boxplot cumulativi...")
+
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
-    
-    if not files: 
-        logging.warning("Nessun file di dati trovato per generare i grafici.")
+    if len(files) < 3:
+        logging.warning("Non ci sono almeno tre esecuzioni per generare i boxplot.")
         return
-
-    df_list = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in files]
-    df = pd.concat(df_list, ignore_index=True)
-    df = df[df["Status"] == "Success"]
-
-    if df.empty:
-        logging.warning("Nessuna richiesta di successo, non verranno generati grafici.")
-        return
-
-    df["Config"] = df.apply(lambda row: f"{row['KEM']} - {row['Signature']}", axis=1)
 
     metrics = {
         "Connect_Time(ms)": "Connect Time (ms)",
@@ -224,38 +244,72 @@ def generate_cumulative_boxplots():
         "Elapsed_Time(ms)": "Elapsed Time (ms)"
     }
 
+    batch_data = {metric: [] for metric in metrics}
+    batch_labels = []
+
+    for i in range(0, len(files), 3):
+        batch_files = files[i:i+3]
+        if len(batch_files) < 3:
+            logging.warning(f"Solo {len(batch_files)} file nel gruppo, salto il batch {i//3 + 1}.")
+            continue
+
+        df_list = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in batch_files]
+        df = pd.concat(df_list, ignore_index=True)
+        df = df[df["Status"] == "Success"]
+
+        if df.empty:
+            logging.warning(f"Nessuna richiesta di successo per il batch {i//3 + 1}, non verranno generati grafici.")
+            continue
+
+        # **Recupera KEM e firma direttamente dal CSV del primo file nel batch**
+        algorithm_label = get_kem_sig_from_csv(os.path.join(OUTPUT_DIR, batch_files[0]))
+        batch_labels.append(algorithm_label)
+
+        for metric in metrics:
+            batch_data[metric].append(df[metric].dropna().tolist())
+
+    # **Generazione di un singolo grafico per ogni metrica con tutti i batch**
     for metric, ylabel in metrics.items():
-        plt.figure(figsize=(12, 6))
+        plt.figure(figsize=(12, 6))  # Maggiore spazio per evitare schiacciamenti
+        plt.boxplot(batch_data[metric], patch_artist=True,
+                    boxprops=dict(facecolor='lightblue', alpha=0.7, edgecolor='black', linewidth=1.5),
+                    whiskerprops=dict(color='black', linewidth=2),
+                    capprops=dict(color='black', linewidth=2),
+                    medianprops=dict(color='red', linewidth=2),
+                    flierprops=dict(marker='o', color='red', markersize=6)
+        )
 
-        # Creazione del boxplot con outlier visibili
-        boxplot = df.boxplot(column=metric, by="Config", vert=True, grid=False, patch_artist=True, whis=2.0)
+        # **Adattamento dinamico dell'asse Y migliorato**
+        all_values = [val for sublist in batch_data[metric] for val in sublist]
+        if all_values:
+            min_val = min(all_values)
+            max_val = max(all_values)
+            Q1 = pd.Series(all_values).quantile(0.25)
+            Q3 = pd.Series(all_values).quantile(0.75)
+            IQR = Q3 - Q1
 
-        # Calcolo del range dei dati per adattare l'asse Y
-        min_val = df[metric].min()
-        max_val = df[metric].max()
-        Q1 = df[metric].quantile(0.25)
-        Q3 = df[metric].quantile(0.75)
-        IQR = Q3 - Q1
+            lower_bound = max(min_val, Q1 - 1.5 * IQR)
+            upper_bound = min(max_val, Q3 + 2.5 * IQR)
 
-        # Determiniamo un range "migliore" per l'asse Y:
-        lower_bound = max(min_val, Q1 - 1.5 * IQR)  # Non partire per forza da zero
-        upper_bound = min(max_val, Q3 + 2.5 * IQR)  # Consentire qualche outlier ma evitare distorsioni
+            # **Se il range è troppo piccolo, aggiungiamo un margine**
+            if upper_bound - lower_bound < 0.1 * (max_val - min_val):
+                lower_bound = min_val - 0.1 * (max_val - min_val)
+                upper_bound = max_val + 0.1 * (max_val - min_val)
 
-        plt.ylim([lower_bound, upper_bound])  # Adatta l'asse Y dinamicamente
+            plt.ylim([lower_bound, upper_bound])
 
-        plt.xticks(rotation=45, ha="right")
-        plt.xlabel("KEM - Signature")
+        plt.title(ylabel)
         plt.ylabel(ylabel)
-        plt.suptitle("")
+        plt.xticks(range(1, len(batch_labels) + 1), batch_labels, rotation=30, ha="right")
         plt.tight_layout()
 
-        graph_path = os.path.join(GRAPH_DIR, f"{metric}_boxplot.png")
+        graph_path = os.path.join(GRAPH_DIR, f"{metric}_cumulative_boxplot.png")
         plt.savefig(graph_path, dpi=300)
         plt.close()
 
-        logging.info(f"Boxplot salvato: {graph_path}")
+        logging.info(f"Boxplot cumulativo salvato: {graph_path}")
 
-
+      
 OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
 MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
 with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
@@ -282,6 +336,6 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         writer.writerow(result[:6] + [f"{success_count}/{NUM_REQUESTS}"] + result[6:])
 
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
-generate_cumulative_boxplots()
 generate_performance_graphs()
 update_average_report(request_results)
+generate_cumulative_boxplots()
