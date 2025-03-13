@@ -164,8 +164,11 @@ def generate_performance_graphs():
         logging.info(f"Grafici generati per il batch {i//3 + 1}")
 
 def update_average_report(request_results):
-    """Genera o aggiorna il report delle medie delle metriche con CPU e RAM."""
+    """Genera o aggiorna il report delle medie delle metriche con CPU e RAM.
+       Inoltre, crea un file con la media di gruppi di 3 righe del file originale, mantenendo lo storico senza duplicazioni."""
+
     avg_file = os.path.join(AVG_DIR, "average_metrics.csv")
+    grouped_avg_file = os.path.join(AVG_DIR, "average_metrics_grouped.csv")  # Nuovo file corretto
 
     # Filtra solo le richieste di successo
     success_results = [r for r in request_results if r[1] is not None]
@@ -183,35 +186,64 @@ def update_average_report(request_results):
     # Leggi i dati di monitoraggio (CPU, RAM)
     if os.path.exists(MONITOR_FILE):
         df_monitor = pd.read_csv(MONITOR_FILE)
-
-        # Filtro: consideriamo solo i valori con CPU ≠ 0
         valid_cpu = df_monitor[df_monitor["CPU_Usage(%)"] > 0]["CPU_Usage(%)"]
         valid_ram = df_monitor[df_monitor["CPU_Usage(%)"] > 0]["Memory_Usage(%)"]
-
-        # Calcola la media SENZA usare round()
         avg_cpu = valid_cpu.mean() if not valid_cpu.empty else 0.0
         avg_ram = valid_ram.mean() if not valid_ram.empty else 0.0
     else:
         avg_cpu, avg_ram = 0.0, 0.0
 
-    # Determina l'indice dell'esecuzione leggendo il numero di righe esistenti
-    execution_index = 1  # Parte da 1 se il file non esiste
-    if os.path.exists(avg_file):
-        with open(avg_file, "r", encoding="utf-8") as f:
-            execution_index = sum(1 for _ in f)  # Conta le righe esistenti per ottenere l'indice
-
-    # Riga da scrivere nel file
-    new_row = [execution_index, avg_connect_time, avg_handshake_time, avg_total_time, avg_elapsed_time, avg_cpu, avg_ram]
-
-    # Controlla se il file esiste e scrive o appende
+    # Scrittura del file originale delle medie
     file_exists = os.path.exists(avg_file)
     with open(avg_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow(["Execution_Index", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", "Client_Avg_RAM_Usage(%)"])
-        writer.writerow(new_row)
+        execution_index = sum(1 for _ in open(avg_file, "r", encoding="utf-8"))  # Numero di righe attuali
+        writer.writerow([execution_index, avg_connect_time, avg_handshake_time, avg_total_time, avg_elapsed_time, avg_cpu, avg_ram])
 
     logging.info(f"Report delle medie aggiornato: {avg_file} con CPU={avg_cpu}% e RAM={avg_ram}%")
+
+    # **Ora gestiamo il file raggruppato, evitando duplicazioni**
+    if os.path.exists(avg_file):
+        df = pd.read_csv(avg_file)
+
+        # Se ci sono meno di 3 righe, non possiamo raggruppare
+        if len(df) < 3:
+            logging.warning("Il file delle medie ha meno di 3 righe, impossibile creare il file raggruppato.")
+            return
+
+        # Controllo quanti gruppi esistono già nel file raggruppato
+        if os.path.exists(grouped_avg_file):
+            df_grouped_existing = pd.read_csv(grouped_avg_file)
+            last_index = df_grouped_existing["Execution_Index"].max() if not df_grouped_existing.empty else 0
+        else:
+            df_grouped_existing = pd.DataFrame()
+            last_index = 0  # Se il file non esiste, iniziamo dal gruppo 1
+
+        last_index = int(last_index)  # 🔴 **Forziamo a intero per evitare l'errore**
+
+        grouped_rows = []
+
+        # Elaboriamo solo i nuovi gruppi di 3 righe che non sono già stati registrati
+        for i in range(last_index * 3, len(df) - (len(df) % 3), 3):
+            group_mean = df.iloc[i:i+3].mean(numeric_only=True)
+            group_mean["Execution_Index"] = (i // 3) + 1  # Manteniamo la numerazione corretta
+            grouped_rows.append(group_mean)
+
+        if grouped_rows:
+            df_grouped_new = pd.DataFrame(grouped_rows)
+
+            # Se il file esiste già, appendiamo solo i nuovi dati senza duplicare quelli vecchi
+            if not df_grouped_existing.empty:
+                df_grouped = pd.concat([df_grouped_existing, df_grouped_new], ignore_index=True)
+            else:
+                df_grouped = df_grouped_new
+
+            df_grouped.to_csv(grouped_avg_file, index=False)
+            logging.info(f"File delle medie raggruppate aggiornato: {grouped_avg_file}")
+        else:
+            logging.info("Nessun nuovo gruppo da aggiungere.")
 
 def get_kem_sig_from_csv(csv_file):
     """Recupera KEM e firma direttamente dal CSV, scegliendo il primo valore univoco disponibile."""
@@ -336,6 +368,6 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         writer.writerow(result[:6] + [f"{success_count}/{NUM_REQUESTS}"] + result[6:])
 
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
-generate_performance_graphs()
 update_average_report(request_results)
-generate_cumulative_boxplots()
+#generate_performance_graphs()
+#generate_cumulative_boxplots()
