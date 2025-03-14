@@ -163,88 +163,6 @@ def generate_performance_graphs():
 
         logging.info(f"Grafici generati per il batch {i//3 + 1}")
 
-def update_average_report(request_results):
-    """Genera o aggiorna il report delle medie delle metriche con CPU e RAM.
-       Inoltre, crea un file con la media di gruppi di 3 righe del file originale, mantenendo lo storico senza duplicazioni."""
-
-    avg_file = os.path.join(AVG_DIR, "average_metrics.csv")
-    grouped_avg_file = os.path.join(AVG_DIR, "average_metrics_grouped.csv")  # Nuovo file corretto
-
-    # Filtra solo le richieste di successo
-    success_results = [r for r in request_results if r[1] is not None]
-
-    if not success_results:
-        logging.warning("Nessuna richiesta di successo, il report delle medie non verrà aggiornato.")
-        return
-
-    # Calcola le medie per i tempi di connessione
-    avg_connect_time = sum(r[1] for r in success_results) / len(success_results)
-    avg_handshake_time = sum(r[2] for r in success_results) / len(success_results)
-    avg_total_time = sum(r[3] for r in success_results) / len(success_results)
-    avg_elapsed_time = sum(r[4] for r in success_results) / len(success_results)
-
-    # Leggi i dati di monitoraggio (CPU, RAM)
-    if os.path.exists(MONITOR_FILE):
-        df_monitor = pd.read_csv(MONITOR_FILE)
-        valid_cpu = df_monitor[df_monitor["CPU_Usage(%)"] > 0]["CPU_Usage(%)"]
-        valid_ram = df_monitor[df_monitor["CPU_Usage(%)"] > 0]["Memory_Usage(%)"]
-        avg_cpu = valid_cpu.mean() if not valid_cpu.empty else 0.0
-        avg_ram = valid_ram.mean() if not valid_ram.empty else 0.0
-    else:
-        avg_cpu, avg_ram = 0.0, 0.0
-
-    # Scrittura del file originale delle medie
-    file_exists = os.path.exists(avg_file)
-    with open(avg_file, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(["Execution_Index", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", "Client_Avg_RAM_Usage(%)"])
-        execution_index = sum(1 for _ in open(avg_file, "r", encoding="utf-8"))  # Numero di righe attuali
-        writer.writerow([execution_index, avg_connect_time, avg_handshake_time, avg_total_time, avg_elapsed_time, avg_cpu, avg_ram])
-
-    logging.info(f"Report delle medie aggiornato: {avg_file} con CPU={avg_cpu}% e RAM={avg_ram}%")
-
-    # **Ora gestiamo il file raggruppato, evitando duplicazioni**
-    if os.path.exists(avg_file):
-        df = pd.read_csv(avg_file)
-
-        # Se ci sono meno di 3 righe, non possiamo raggruppare
-        if len(df) < 3:
-            logging.warning("Il file delle medie ha meno di 3 righe, impossibile creare il file raggruppato.")
-            return
-
-        # Controllo quanti gruppi esistono già nel file raggruppato
-        if os.path.exists(grouped_avg_file):
-            df_grouped_existing = pd.read_csv(grouped_avg_file)
-            last_index = df_grouped_existing["Execution_Index"].max() if not df_grouped_existing.empty else 0
-        else:
-            df_grouped_existing = pd.DataFrame()
-            last_index = 0  # Se il file non esiste, iniziamo dal gruppo 1
-
-        last_index = int(last_index)  # 🔴 **Forziamo a intero per evitare l'errore**
-
-        grouped_rows = []
-
-        # Elaboriamo solo i nuovi gruppi di 3 righe che non sono già stati registrati
-        for i in range(last_index * 3, len(df) - (len(df) % 3), 3):
-            group_mean = df.iloc[i:i+3].mean(numeric_only=True)
-            group_mean["Execution_Index"] = (i // 3) + 1  # Manteniamo la numerazione corretta
-            grouped_rows.append(group_mean)
-
-        if grouped_rows:
-            df_grouped_new = pd.DataFrame(grouped_rows)
-
-            # Se il file esiste già, appendiamo solo i nuovi dati senza duplicare quelli vecchi
-            if not df_grouped_existing.empty:
-                df_grouped = pd.concat([df_grouped_existing, df_grouped_new], ignore_index=True)
-            else:
-                df_grouped = df_grouped_new
-
-            df_grouped.to_csv(grouped_avg_file, index=False)
-            logging.info(f"File delle medie raggruppate aggiornato: {grouped_avg_file}")
-        else:
-            logging.info("Nessun nuovo gruppo da aggiungere.")
-
 def get_kem_sig_from_csv(csv_file):
     """Recupera KEM e firma direttamente dal CSV, scegliendo il primo valore univoco disponibile."""
     df = pd.read_csv(csv_file)
@@ -341,7 +259,89 @@ def generate_cumulative_boxplots():
 
         logging.info(f"Boxplot cumulativo salvato: {graph_path}")
 
-      
+def update_average_report(request_results):
+    """Genera il report delle medie delle metriche, mantenendo solo average_metrics.csv e average_metrics_per_request.csv."""
+
+    avg_file = os.path.join(AVG_DIR, "average_metrics.csv")
+    per_request_avg_file = os.path.join(AVG_DIR, "average_metrics_per_request.csv")
+
+    # Filtra solo le richieste di successo
+    success_results = [r for r in request_results if r[1] is not None]
+
+    if not success_results:
+        logging.warning("Nessuna richiesta di successo, il report delle medie non verrà aggiornato.")
+        return
+
+    # Calcola le medie globali
+    avg_connect_time = sum(r[1] for r in success_results) / len(success_results)
+    avg_handshake_time = sum(r[2] for r in success_results) / len(success_results)
+    avg_total_time = sum(r[3] for r in success_results) / len(success_results)
+    avg_elapsed_time = sum(r[4] for r in success_results) / len(success_results)
+
+    # Lettura dati di monitoraggio (CPU, RAM)
+    if os.path.exists(MONITOR_FILE):
+        df_monitor = pd.read_csv(MONITOR_FILE)
+        valid_cpu = df_monitor[df_monitor["CPU_Usage(%)"] > 0]["CPU_Usage(%)"]
+        valid_ram = df_monitor[df_monitor["Memory_Usage(%)"] > 0]["Memory_Usage(%)"]
+        avg_cpu = valid_cpu.mean() if not valid_cpu.empty else 0.0
+        avg_ram = valid_ram.mean() if not valid_ram.empty else 0.0
+    else:
+        avg_cpu, avg_ram = 0.0, 0.0
+
+    # **Calcolo di Execution_Index corretto senza controlli ridondanti**
+    if os.path.exists(avg_file) and os.path.getsize(avg_file) > 0:  # Controlla che il file non sia vuoto
+        df_existing = pd.read_csv(avg_file)
+        execution_index = df_existing["Execution_Index"].max() + 1
+    else:
+        execution_index = 0
+
+    # **Scrittura del file originale con la media globale**
+    file_exists = os.path.exists(avg_file)
+    with open(avg_file, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow([
+                "Execution_Index", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
+                "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", 
+                "Client_Avg_RAM_Usage(%)"
+            ])
+        writer.writerow([
+            execution_index, avg_connect_time, avg_handshake_time, avg_total_time, 
+            avg_elapsed_time, avg_cpu, avg_ram
+        ])
+
+    logging.info(f"Report delle medie aggiornato: {avg_file}")
+
+    # **Ora aggiorniamo il file per_request_avg_file con la media per richiesta**
+    request_data = []
+    files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
+
+    for i in range(len(files)):
+        if i % 3 == 0 and i + 3 <= len(files):
+            batch_files = files[i:i+3]
+            dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in batch_files]
+            df_avg = pd.concat(dataframes)[["Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)", "Cert_Size(B)"]].groupby(level=0).mean()
+
+            for row in df_avg.itertuples():
+                request_data.append([
+                    row.Index + 1,  # Numero richiesta
+                    row._1,  # Connect Time
+                    row._2,  # Handshake Time
+                    row._3,  # Total Time
+                    row._4,  # Elapsed Time
+                    row._5,  # Cert_Size
+                ])
+
+    per_request_file_exists = os.path.exists(per_request_avg_file)
+    with open(per_request_avg_file, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not per_request_file_exists:
+            writer.writerow(["Request_Number", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
+                             "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Avg_Cert_Size(B)"])
+        writer.writerows(request_data)
+
+    logging.info(f"File delle medie per richiesta aggiornato: {per_request_avg_file}")
+
 OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
 MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
 with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
