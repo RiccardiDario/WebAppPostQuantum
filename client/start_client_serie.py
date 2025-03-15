@@ -259,8 +259,80 @@ def generate_cumulative_boxplots():
 
         logging.info(f"Boxplot cumulativo salvato: {graph_path}")
 
+def convert_to_bytes(value, unit):
+    """Converte i valori da diverse unità in bytes."""
+    unit = unit.lower()
+    value = float(value)
+    if unit in ['byte', 'bytes', 'b']:
+        return int(value)
+    elif unit == 'kb':
+        return int(value * 1024)
+    elif unit == 'mb':
+        return int(value * 1024**2)
+    elif unit == 'gb':
+        return int(value * 1024**3)
+    else:
+        raise ValueError(f"Unità non riconosciuta: {unit}")
+
+def analyze_pcap():
+    """Analizza il file pcap e calcola la media dei byte scambiati in upload e download."""
+    pcap_file = "/app/pcap/capture.pcap"
+    
+    try:
+        result = subprocess.run(
+            ["tshark", "-r", pcap_file, "-q", "-z", "conv,tcp"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode != 0:
+            logging.error("Errore nell'analisi del file pcap con tshark")
+            return 0, 0
+
+        upload_bytes, download_bytes, num_connessioni = 0, 0, 0
+
+        pattern = re.compile(
+            r"(\d+\.\d+\.\d+\.\d+:\d+)\s+<->\s+(\d+\.\d+\.\d+\.\d+:\d+)\s+\d+\s+(\d+)\s+(\w+)\s+\d+\s+(\d+)\s+(\w+)"
+        )
+
+        for line in result.stdout.split("\n"):
+            match = pattern.search(line)
+            if match:
+                num_connessioni += 1
+                upload_value = match.group(5)     
+                upload_unit = match.group(6)      
+                download_value = match.group(3)   
+                download_unit = match.group(4) 
+
+                upload = convert_to_bytes(upload_value, upload_unit)
+                download = convert_to_bytes(download_value, download_unit)
+
+                upload_bytes += upload
+                download_bytes += download
+
+        if num_connessioni == 0:
+            logging.warning("Nessuna connessione TCP individuata nel file pcap.")
+            return 0, 0
+
+        media_upload = upload_bytes / num_connessioni
+        media_download = download_bytes / num_connessioni
+
+        logging.info(f"Numero connessioni individuate: {num_connessioni}")
+        logging.info(f"Totale upload: {upload_bytes} bytes | Totale download: {download_bytes} bytes")
+        logging.info(f"Media byte inviati: {media_upload:.2f} B | Media byte ricevuti: {media_download:.2f} B")
+
+        return media_upload, media_download
+
+    except subprocess.TimeoutExpired:
+        logging.error("Timeout durante l'esecuzione di tshark.")
+        return 0, 0
+    except Exception as e:
+        logging.error(f"Errore durante l'analisi: {e}")
+        return 0, 0
+
 def update_average_report(request_results):
-    """Genera il report delle medie delle metriche, aggiungendo KEM e Signature e rimuovendo Execution_Index."""
+    """Genera il report delle medie delle metriche, aggiungendo KEM, Signature e analizzando il pcap."""
 
     avg_file = os.path.join(AVG_DIR, "average_metrics.csv")
     per_request_avg_file = os.path.join(AVG_DIR, "average_metrics_per_request.csv")
@@ -278,7 +350,7 @@ def update_average_report(request_results):
     avg_total_time = sum(r[3] for r in success_results) / len(success_results)
     avg_elapsed_time = sum(r[4] for r in success_results) / len(success_results)
 
-    # Determina il KEM e la Signature usati (prende il primo valore non vuoto tra le richieste)
+    # Determina il KEM e la Signature usati
     kem_used = next((r[8] for r in success_results if r[8] and r[8] != "Unknown"), "Unknown")
     sig_used = next((r[9] for r in success_results if r[9] and r[9] != "Unknown"), "Unknown")
 
@@ -292,6 +364,9 @@ def update_average_report(request_results):
     else:
         avg_cpu, avg_ram = 0.0, 0.0
 
+    # **Analisi del pcap per ottenere il traffico effettivo**
+    avg_upload, avg_download = analyze_pcap()
+
     # **Scrittura del file originale con la media globale (senza Execution_Index)**
     file_exists = os.path.exists(avg_file)
     with open(avg_file, "a", newline="", encoding="utf-8") as f:
@@ -300,11 +375,11 @@ def update_average_report(request_results):
             writer.writerow([
                 "KEM", "Signature", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
                 "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", 
-                "Client_Avg_RAM_Usage(%)"
+                "Client_Avg_RAM_Usage(%)", "Avg_Upload_Bytes", "Avg_Download_Bytes"
             ])
         writer.writerow([
             kem_used, sig_used, avg_connect_time, avg_handshake_time, avg_total_time, 
-            avg_elapsed_time, avg_cpu, avg_ram
+            avg_elapsed_time, avg_cpu, avg_ram, avg_upload, avg_download
         ])
 
     logging.info(f"Report delle medie aggiornato: {avg_file}")
