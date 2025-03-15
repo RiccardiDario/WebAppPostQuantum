@@ -260,7 +260,7 @@ def generate_cumulative_boxplots():
         logging.info(f"Boxplot cumulativo salvato: {graph_path}")
 
 def update_average_report(request_results):
-    """Genera il report delle medie delle metriche, mantenendo solo average_metrics.csv e average_metrics_per_request.csv."""
+    """Genera il report delle medie delle metriche, aggiungendo KEM e Signature e rimuovendo Execution_Index."""
 
     avg_file = os.path.join(AVG_DIR, "average_metrics.csv")
     per_request_avg_file = os.path.join(AVG_DIR, "average_metrics_per_request.csv")
@@ -278,6 +278,10 @@ def update_average_report(request_results):
     avg_total_time = sum(r[3] for r in success_results) / len(success_results)
     avg_elapsed_time = sum(r[4] for r in success_results) / len(success_results)
 
+    # Determina il KEM e la Signature usati (prende il primo valore non vuoto tra le richieste)
+    kem_used = next((r[8] for r in success_results if r[8] and r[8] != "Unknown"), "Unknown")
+    sig_used = next((r[9] for r in success_results if r[9] and r[9] != "Unknown"), "Unknown")
+
     # Lettura dati di monitoraggio (CPU, RAM)
     if os.path.exists(MONITOR_FILE):
         df_monitor = pd.read_csv(MONITOR_FILE)
@@ -288,43 +292,36 @@ def update_average_report(request_results):
     else:
         avg_cpu, avg_ram = 0.0, 0.0
 
-    # **Calcolo di Execution_Index corretto senza controlli ridondanti**
-    if os.path.exists(avg_file) and os.path.getsize(avg_file) > 0:  # Controlla che il file non sia vuoto
-        df_existing = pd.read_csv(avg_file)
-        execution_index = df_existing["Execution_Index"].max() + 1
-    else:
-        execution_index = 0
-
-    # **Scrittura del file originale con la media globale**
+    # **Scrittura del file originale con la media globale (senza Execution_Index)**
     file_exists = os.path.exists(avg_file)
     with open(avg_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow([
-                "Execution_Index", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
+                "KEM", "Signature", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
                 "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", 
                 "Client_Avg_RAM_Usage(%)"
             ])
         writer.writerow([
-            execution_index, avg_connect_time, avg_handshake_time, avg_total_time, 
+            kem_used, sig_used, avg_connect_time, avg_handshake_time, avg_total_time, 
             avg_elapsed_time, avg_cpu, avg_ram
         ])
 
     logging.info(f"Report delle medie aggiornato: {avg_file}")
 
-    # **Ora aggiorniamo il file per_request_avg_file con la media per richiesta**
+    # **Ora aggiorniamo il file per_request_avg_file con la media per richiesta (senza Execution_Index)**
     request_data = []
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
 
-    for i in range(len(files)):
-        if i % 3 == 0 and i + 3 <= len(files):
+    for i in range(0, len(files), 3):  # Processiamo solo ogni terzo file, evitando duplicazioni
+        if i + 3 <= len(files):  # Assicura che ci siano almeno 3 file per calcolare la media
             batch_files = files[i:i+3]
             dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in batch_files]
             df_avg = pd.concat(dataframes)[["Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)", "Cert_Size(B)"]].groupby(level=0).mean()
 
             for row in df_avg.itertuples():
                 request_data.append([
-                    row.Index + 1,  # Numero richiesta
+                    kem_used, sig_used,  # KEM e Signature
                     row._1,  # Connect Time
                     row._2,  # Handshake Time
                     row._3,  # Total Time
@@ -336,7 +333,7 @@ def update_average_report(request_results):
     with open(per_request_avg_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not per_request_file_exists:
-            writer.writerow(["Request_Number", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
+            writer.writerow(["KEM", "Signature", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
                              "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Avg_Cert_Size(B)"])
         writer.writerows(request_data)
 
