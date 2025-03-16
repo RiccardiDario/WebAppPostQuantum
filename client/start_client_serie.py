@@ -345,10 +345,14 @@ def update_average_report(request_results):
         return
 
     # Calcola le medie globali
-    avg_connect_time = sum(r[1] for r in success_results) / len(success_results)
-    avg_handshake_time = sum(r[2] for r in success_results) / len(success_results)
-    avg_total_time = sum(r[3] for r in success_results) / len(success_results)
-    avg_elapsed_time = sum(r[4] for r in success_results) / len(success_results)
+    avg_connect_time = round(sum(r[1] for r in success_results) / len(success_results), 4)
+    avg_handshake_time = round(sum(r[2] for r in success_results) / len(success_results), 4)
+    avg_total_time = round(sum(r[3] for r in success_results) / len(success_results), 4)
+    avg_elapsed_time = round(sum(r[4] for r in success_results) / len(success_results), 4)
+
+    # Aggiunta medie logiche bytes da cURL
+    avg_logical_bytes_sent = round(sum(r[6] for r in success_results) / len(success_results), 4)
+    avg_logical_bytes_received = round(sum(r[7] for r in success_results) / len(success_results), 4)
 
     # Determina il KEM e la Signature usati
     kem_used = next((r[8] for r in success_results if r[8] and r[8] != "Unknown"), "Unknown")
@@ -359,15 +363,15 @@ def update_average_report(request_results):
         df_monitor = pd.read_csv(MONITOR_FILE)
         valid_cpu = df_monitor[df_monitor["CPU_Usage(%)"] > 0]["CPU_Usage(%)"]
         valid_ram = df_monitor[df_monitor["Memory_Usage(%)"] > 0]["Memory_Usage(%)"]
-        avg_cpu = valid_cpu.mean() if not valid_cpu.empty else 0.0
-        avg_ram = valid_ram.mean() if not valid_ram.empty else 0.0
+        avg_cpu = round(valid_cpu.mean(), 4) if not valid_cpu.empty else 0.0
+        avg_ram = round(valid_ram.mean(), 4) if not valid_ram.empty else 0.0
     else:
         avg_cpu, avg_ram = 0.0, 0.0
 
     # **Analisi del pcap per ottenere il traffico effettivo**
     avg_upload, avg_download = analyze_pcap()
 
-    # **Scrittura del file originale con la media globale (senza Execution_Index)**
+   # Aggiungi i campi al CSV
     file_exists = os.path.exists(avg_file)
     with open(avg_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -375,12 +379,12 @@ def update_average_report(request_results):
             writer.writerow([
                 "KEM", "Signature", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
                 "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", 
-                "Client_Avg_RAM_Usage(%)", "Avg_Upload_Bytes", "Avg_Download_Bytes"
-            ])
+                "Client_Avg_RAM_Usage(%)", "Avg_Upload_Bytes (Wireshark)", "Avg_Download_Bytes (Wireshark)",
+                "Avg_Logical_Bytes_Sent (cURL)", "Avg_Logical_Bytes_Received (cURL)"])
         writer.writerow([
             kem_used, sig_used, avg_connect_time, avg_handshake_time, avg_total_time, 
-            avg_elapsed_time, avg_cpu, avg_ram, avg_upload, avg_download
-        ])
+            avg_elapsed_time, avg_cpu, avg_ram, avg_upload, avg_download,
+            avg_logical_bytes_sent, avg_logical_bytes_received])
 
     logging.info(f"Report delle medie aggiornato: {avg_file}")
 
