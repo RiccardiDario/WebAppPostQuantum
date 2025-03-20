@@ -18,13 +18,6 @@ RESOURCE_LOG, OUTPUT_FILE = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx",
 ACCESS_LOG, EXPECTED_REQUESTS, SAMPLING_INTERVAL = "/opt/nginx/logs/access_custom.log", 500, 0.1
 AVG_METRICS_FILE = f"{FILTERED_LOG_DIR}/avg_nginx_usage.csv"
 
-import re
-import pandas as pd
-import matplotlib.pyplot as plt
-import os
-from cryptography import x509
-from cryptography.hazmat.backends import default_backend
-
 def get_kem_sig_from_logs(log_path, cert_path):
     """Estrae il KEM dal log di accesso e la firma dal certificato del server Nginx."""
     kem, sig_alg = "Unknown", "Unknown"
@@ -51,7 +44,6 @@ def get_kem_sig_from_logs(log_path, cert_path):
         sig_alg = "Unknown"
 
     return kem, sig_alg
-
 
 def generate_server_performance_graphs():
     """Genera i grafici relativi alle risorse utilizzate da Nginx ogni cinque file rilevati."""
