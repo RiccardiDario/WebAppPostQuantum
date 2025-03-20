@@ -31,12 +31,32 @@ def get_latest_file_index():
     
     return max(numbers) if numbers else 0  # Restituisce 0 se nessun file è presente
 
-def check_last_graph_exists():
-    """Verifica se l'ultimo boxplot generato esiste nella cartella dei grafici."""
+def get_last_modified_time(file_path):
+    """Restituisce il timestamp dell'ultima modifica di un file, oppure None se il file non esiste."""
+    return os.path.getmtime(file_path) if os.path.exists(file_path) else None
+
+def wait_for_updated_graph():
+    """Aspetta che l'ultimo boxplot venga aggiornato durante questa esecuzione."""
     metrics = ["Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)"]
     last_graph_path = os.path.join(GRAPH_DIR, f"{metrics[-1]}_cumulative_boxplot.png")  # Ultimo grafico atteso
 
-    return os.path.exists(last_graph_path)
+    # Controlliamo quando è stato modificato l'ultima volta
+    last_mod_time = get_last_modified_time(last_graph_path)
+    print(f"🕵️  Ultima modifica rilevata: {time.ctime(last_mod_time) if last_mod_time else 'Nessun file'}")
+
+    start_time = time.time()
+    while time.time() - start_time < TIMEOUT_SECONDS:
+        new_mod_time = get_last_modified_time(last_graph_path)
+        
+        # Se il file non esiste o non è stato aggiornato, continuiamo ad aspettare
+        if new_mod_time and last_mod_time and new_mod_time > last_mod_time:
+            print(f"✅ Il grafico {last_graph_path} è stato aggiornato!")
+            return True
+        
+        time.sleep(2)  # Controllo ogni 2 secondi
+
+    print(f"⚠️ Timeout raggiunto ({TIMEOUT_SECONDS} sec), il grafico non è stato aggiornato.")
+    return False
 
 # Assicuriamoci che le cartelle esistano prima di partire
 ensure_output_directory()
@@ -71,22 +91,10 @@ for i in range(1, NUM_RUNS + 1):
 
         time.sleep(2)  # Controllo ogni 2 secondi
 
-    # **Solo alla quinta iterazione, controlliamo se il grafico finale è stato generato**
+    # **Solo alla quinta iterazione, controlliamo se il grafico finale è stato generato e aggiornato**
     if i == 5:
-        print("⌛ Controllo la generazione dell'ultimo boxplot prima di fermare i container...")
-
-        start_time = time.time()
-        while True:
-            if check_last_graph_exists():
-                print(f"✅ Ultimo grafico rilevato correttamente in {GRAPH_DIR}")
-                break
-
-            # Controllo timeout per evitare blocchi infiniti
-            if time.time() - start_time > TIMEOUT_SECONDS:
-                print(f"⚠️ Timeout raggiunto ({TIMEOUT_SECONDS} sec), il grafico non è stato trovato.")
-                break
-
-            time.sleep(2)  # Controllo ogni 2 secondi
+        print("⌛ Controllo la generazione e aggiornamento dell'ultimo boxplot prima di fermare i container...")
+        wait_for_updated_graph()
 
     # Arresta i container dopo il test
     print(f"🛑 Fermando i container dopo il test numero {i}...")
