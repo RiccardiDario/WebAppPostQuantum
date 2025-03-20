@@ -74,7 +74,7 @@ def execute_request(req_num):
         with active_requests_lock: active_requests -= 1
 
 def generate_performance_graphs():
-    """Genera i grafici relativi alle metriche di prestazione per ogni batch di 3 esecuzioni."""
+    """Genera i grafici relativi alle metriche di prestazione per ogni batch di 5 esecuzioni."""
     logging.info("Generazione dei grafici mediati...")
 
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
