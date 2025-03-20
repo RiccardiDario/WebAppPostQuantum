@@ -1,5 +1,7 @@
-import psutil, csv, time, os pandas as pd, matplotlib.pyplot as plt
+import subprocess, re, psutil, csv, time, os, pandas as pd, matplotlib.pyplot as plt
 from datetime import datetime
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 def get_next_filename(path, name, ext, counter=1):
     while os.path.exists(f"{path}/{name}{counter}.{ext}"): counter += 1
@@ -9,29 +11,47 @@ def ensure_dirs(*dirs):
     for d in dirs: os.makedirs(d, exist_ok=True)
 
 OUTPUT_DIR = "/opt/nginx/output"
-GRAPH_DIR = "/opt/nginx/output/graphs"
-RESOURCE_LOG_DIR, FILTERED_LOG_DIR = f"{OUTPUT_DIR}/resource_logs", f"{OUTPUT_DIR}/filtered_logs"
+RESOURCE_LOG_DIR, FILTERED_LOG_DIR, GRAPH_DIR = f"{OUTPUT_DIR}/resource_logs", f"{OUTPUT_DIR}/filtered_logs", f"{OUTPUT_DIR}/filtered_logs/graphs"
 ensure_dirs(RESOURCE_LOG_DIR, FILTERED_LOG_DIR, GRAPH_DIR)
 
 RESOURCE_LOG, OUTPUT_FILE = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx", "csv"), get_next_filename(FILTERED_LOG_DIR, "monitor_nginx_filtered", "csv")
 ACCESS_LOG, EXPECTED_REQUESTS, SAMPLING_INTERVAL = "/opt/nginx/logs/access_custom.log", 500, 0.1
 AVG_METRICS_FILE = f"{FILTERED_LOG_DIR}/avg_nginx_usage.csv"
 
-def get_kem_sig_from_nginx_conf(nginx_conf_path):
-    """Recupera KEM e Signature dal file di configurazione di Nginx."""
+import re
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+
+def get_kem_sig_from_logs(log_path, cert_path):
+    """Estrae il KEM dal log di accesso e la firma dal certificato del server Nginx."""
     kem, sig_alg = "Unknown", "Unknown"
+
+    # 📌 **Estrazione del KEM dai log di accesso di Nginx**
     try:
-        with open(nginx_conf_path, "r") as f:
-            for line in f:
-                if "ssl_ecdh_curve" in line:
-                    kem = line.split()[-1].strip(";")
-                if "log_format custom" in line and "KEM=" in line and "SIGN=" in line:
-                    parts = line.split("KEM=")[-1].split("SIGN=")
-                    kem = parts[0].strip().split(" ")[0]
-                    sig_alg = parts[1].strip().split(" ")[0]
+        with open(log_path, "r") as f:
+            for line in reversed(f.readlines()):  # Legge i log dall'ultima richiesta in poi
+                kem_match = re.search(r'KEM=([\w\d_-]+)', line)
+                if kem_match:
+                    kem = kem_match.group(1)
+                    break  # Prendi l'ultimo KEM usato nelle richieste
     except Exception as e:
-        print(f"Errore nella lettura del file di configurazione Nginx: {e}")
+        print(f"Errore nella lettura dei log di accesso di Nginx: {e}")
+
+    # 📌 **Estrazione dell'algoritmo di firma dal certificato di Nginx**
+    try:
+        with open(cert_path, "rb") as cert_file:
+            cert_data = cert_file.read()
+        cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+        sig_alg = cert.signature_algorithm_oid._name  # Estrai l'algoritmo di firma
+    except Exception as e:
+        print(f"Errore nell'estrazione della firma dal certificato: {e}")
+        sig_alg = "Unknown"
+
     return kem, sig_alg
+
 
 def generate_server_performance_graphs():
     """Genera i grafici relativi alle risorse utilizzate da Nginx ogni cinque file rilevati."""
@@ -44,8 +64,9 @@ def generate_server_performance_graphs():
         print("Non ci sono abbastanza file per generare i grafici.")
         return
 
-    nginx_conf_path = "/etc/nginx/nginx.conf"
-    kem, sig_alg = get_kem_sig_from_nginx_conf(nginx_conf_path)
+    log_path = "/opt/nginx/logs/access_custom.log"
+    cert_path = "/etc/nginx/certs/qsc-ca-chain.crt"
+    kem, sig_alg = get_kem_sig_from_logs(log_path, cert_path)
 
     for i in range(0, len(monitor_files), 5):
         batch_files = monitor_files[i:i+5]
@@ -53,7 +74,7 @@ def generate_server_performance_graphs():
         # Leggi i dati dei file batch
         dataframes = [pd.read_csv(os.path.join(FILTERED_LOG_DIR, f)) for f in batch_files]
         for df in dataframes:
-            df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+            df["Timestamp"] = pd.to_datetime(df["Timestamp"], format="%d/%b/%Y:%H:%M:%S.%f")
 
         min_range = min((df["Timestamp"].max() - df["Timestamp"].min()).total_seconds() for df in dataframes)
         num_samples = int(min_range / 0.1)

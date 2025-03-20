@@ -46,7 +46,7 @@ RUN strip "${OSSLDIR}/lib/"*.a "${OSSLDIR}/lib64/ossl-modules/oqsprovider.so" "$
 
 FROM alpine:${ALPINE_VERSION}
 ARG INSTALLDIR BASEDIR OSSLDIR
-RUN apk update && apk --no-cache add pcre-dev python3 py3-psutil
+RUN apk update && apk --no-cache add pcre-dev python3 py3-psutil py3-pandas py3-matplotlib py3-cryptography
 COPY --from=builder ${INSTALLDIR} ${INSTALLDIR}
 COPY --from=builder ${OSSLDIR} ${OSSLDIR}
 RUN ln -sf /dev/stdout "${INSTALLDIR}/logs/access.log" && ln -sf /dev/stderr "${INSTALLDIR}/logs/error.log"
