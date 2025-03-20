@@ -157,7 +157,7 @@ def generate_performance_graphs():
         )
 
         plt.grid(True, linestyle="--", alpha=0.7)
-        graph_path = os.path.join(SYSTEM_GRAPH_DIR, f"cpu_memory_usage_batch_{i//3 + 1}.png")
+        graph_path = os.path.join(SYSTEM_GRAPH_DIR, f"cpu_memory_usage_batch_{i//5 + 1}.png")
         plt.savefig(graph_path, dpi=300, bbox_inches="tight")  # ← `bbox_inches="tight"` evita il taglio della legenda
         plt.close()
 

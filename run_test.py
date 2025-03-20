@@ -4,7 +4,7 @@ import os
 import re
 
 # Numero di test da eseguire
-NUM_RUNS = 3
+NUM_RUNS = 5
 TIMEOUT_SECONDS = 300  # Massimo tempo d'attesa per la generazione dei file
 
 # Directory dei log e dei report
@@ -71,8 +71,8 @@ for i in range(1, NUM_RUNS + 1):
 
         time.sleep(2)  # Controllo ogni 2 secondi
 
-    # **Solo alla terza iterazione, controlliamo se il grafico finale è stato generato**
-    if i == 3:
+    # **Solo alla quinta iterazione, controlliamo se il grafico finale è stato generato**
+    if i == 5:
         print("⌛ Controllo la generazione dell'ultimo boxplot prima di fermare i container...")
 
         start_time = time.time()
@@ -94,7 +94,7 @@ for i in range(1, NUM_RUNS + 1):
 
     # Pausa tra un'esecuzione e l'altra per evitare errori di misurazione
     if i < NUM_RUNS:
-        print("⏳ Attesa di 10 secondi prima del prossimo test...")
+        print("⏳ Attesa di 2 secondi prima del prossimo test...")
         time.sleep(2)
 
 print("\n🎉 Tutti i test sono stati completati con successo!")

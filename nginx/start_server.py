@@ -1,4 +1,4 @@
-import psutil, csv, time, os
+import psutil, csv, time, os pandas as pd, matplotlib.pyplot as plt
 from datetime import datetime
 
 def get_next_filename(path, name, ext, counter=1):
@@ -9,12 +9,83 @@ def ensure_dirs(*dirs):
     for d in dirs: os.makedirs(d, exist_ok=True)
 
 OUTPUT_DIR = "/opt/nginx/output"
+GRAPH_DIR = "/opt/nginx/output/graphs"
 RESOURCE_LOG_DIR, FILTERED_LOG_DIR = f"{OUTPUT_DIR}/resource_logs", f"{OUTPUT_DIR}/filtered_logs"
-ensure_dirs(RESOURCE_LOG_DIR, FILTERED_LOG_DIR)
+ensure_dirs(RESOURCE_LOG_DIR, FILTERED_LOG_DIR, GRAPH_DIR)
 
 RESOURCE_LOG, OUTPUT_FILE = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx", "csv"), get_next_filename(FILTERED_LOG_DIR, "monitor_nginx_filtered", "csv")
 ACCESS_LOG, EXPECTED_REQUESTS, SAMPLING_INTERVAL = "/opt/nginx/logs/access_custom.log", 500, 0.1
 AVG_METRICS_FILE = f"{FILTERED_LOG_DIR}/avg_nginx_usage.csv"
+
+def get_kem_sig_from_nginx_conf(nginx_conf_path):
+    """Recupera KEM e Signature dal file di configurazione di Nginx."""
+    kem, sig_alg = "Unknown", "Unknown"
+    try:
+        with open(nginx_conf_path, "r") as f:
+            for line in f:
+                if "ssl_ecdh_curve" in line:
+                    kem = line.split()[-1].strip(";")
+                if "log_format custom" in line and "KEM=" in line and "SIGN=" in line:
+                    parts = line.split("KEM=")[-1].split("SIGN=")
+                    kem = parts[0].strip().split(" ")[0]
+                    sig_alg = parts[1].strip().split(" ")[0]
+    except Exception as e:
+        print(f"Errore nella lettura del file di configurazione Nginx: {e}")
+    return kem, sig_alg
+
+def generate_server_performance_graphs():
+    """Genera i grafici relativi alle risorse utilizzate da Nginx ogni cinque file rilevati."""
+    print("Generazione dei grafici di performance del server...")
+
+    FILTERED_LOG_DIR = "/opt/nginx/output/filtered_logs"
+    monitor_files = sorted([f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")])
+
+    if len(monitor_files) < 5:
+        print("Non ci sono abbastanza file per generare i grafici.")
+        return
+
+    nginx_conf_path = "/etc/nginx/nginx.conf"
+    kem, sig_alg = get_kem_sig_from_nginx_conf(nginx_conf_path)
+
+    for i in range(0, len(monitor_files), 5):
+        batch_files = monitor_files[i:i+5]
+
+        # Leggi i dati dei file batch
+        dataframes = [pd.read_csv(os.path.join(FILTERED_LOG_DIR, f)) for f in batch_files]
+        for df in dataframes:
+            df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+
+        min_range = min((df["Timestamp"].max() - df["Timestamp"].min()).total_seconds() for df in dataframes)
+        num_samples = int(min_range / 0.1)
+
+        df_monitor_avg = pd.concat([
+            df[df["Timestamp"] <= (df["Timestamp"].min() + pd.Timedelta(seconds=min_range))]
+            .assign(Index=lambda df: (df["Timestamp"] - df["Timestamp"].min()).dt.total_seconds() // 0.1)
+            .groupby("Index").mean().reset_index()
+            for df in dataframes
+        ]).groupby("Index").mean().reset_index()
+
+        sample_indices = (df_monitor_avg["Index"] * 0.1 * 1000).tolist()
+
+        plt.figure(figsize=(14, 7))
+        plt.plot(sample_indices, df_monitor_avg["CPU (%)"], label="CPU Usage (%)", color="red", marker="o", linestyle="-")
+        plt.plot(sample_indices, df_monitor_avg["Mem (%)"], label="Memory Usage (%)", color="blue", marker="o", linestyle="-")
+        plt.xlabel("Time (ms)")
+        plt.ylabel("Usage (%)")
+        plt.title(f"Server Resource Usage (Avg. CPU & Memory) Over Time\nKEM: {kem} | Signature: {sig_alg}")
+
+        plt.legend(
+            title=f"KEM: {kem} | Signature: {sig_alg}",
+            loc="upper left",
+            bbox_to_anchor=(1, 1)
+        )
+
+        plt.grid(True, linestyle="--", alpha=0.7)
+        graph_path = os.path.join(GRAPH_DIR, f"server_cpu_memory_usage_batch_{i//5 + 1}.png")
+        plt.savefig(graph_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
+        print(f"Grafico generato: {graph_path}")
 
 def monitor_resources():
     print("Inizio monitoraggio delle risorse...")
@@ -87,6 +158,7 @@ if __name__ == "__main__":
         monitor_resources()
         analyze_performance()
         generate_avg_resource_usage()
+        generate_server_performance_graphs()
         log_system_info()
     except Exception as e:
         print(f"ERRORE GENERALE: {e}")
