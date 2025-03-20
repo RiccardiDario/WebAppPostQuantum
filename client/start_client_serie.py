@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p256_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "secp256r1", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
@@ -80,12 +80,12 @@ def generate_performance_graphs():
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
     monitor_files = sorted([f for f in os.listdir(MONITOR_DIR) if f.startswith("system_client") and f.endswith(".csv")])
 
-    for i in range(0, len(files), 3):
-        batch_files = files[i:i+3]
-        monitor_batch_files = monitor_files[i:i+3]
+    for i in range(0, len(files), 5):
+        batch_files = files[i:i+5]
+        monitor_batch_files = monitor_files[i:i+5]
 
-        if len(batch_files) < 3:
-            logging.warning(f"Solo {len(batch_files)} file nel batch {i//3 + 1}, salto la generazione dei grafici.")
+        if len(batch_files) < 5:
+            logging.warning(f"Solo {len(batch_files)} file nel batch {i//5 + 1}, salto la generazione dei grafici.")
             continue
 
         dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in batch_files]
@@ -108,7 +108,7 @@ def generate_performance_graphs():
             plt.title(f"Elapsed Time per Request\nKEM: {kem} | Signature: {sig_alg}")
             plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B")
             plt.grid(True, linestyle="--", alpha=0.7)
-            plt.savefig(os.path.join(GRAPH_DIR, f"elapsed_time_graph_batch_{i//3 + 1}_{start_idx+1}_{end_idx}.png"), dpi=300)
+            plt.savefig(os.path.join(GRAPH_DIR, f"elapsed_time_graph_batch_{i//5 + 1}_{start_idx+1}_{end_idx}.png"), dpi=300)
             plt.close()
 
             plt.figure(figsize=(14, 7))
@@ -120,7 +120,7 @@ def generate_performance_graphs():
             plt.title(f"Timing Breakdown for TLS Connections\nKEM: {kem} | Signature: {sig_alg}")
             plt.legend(title=f"Certificate Size: {cert_size_mean:.2f} B")
             plt.grid(axis="y", linestyle="--", alpha=0.7)
-            plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_batch_{i//3 + 1}_{start_idx+1}_{end_idx}.png"), dpi=300)
+            plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_batch_{i//5 + 1}_{start_idx+1}_{end_idx}.png"), dpi=300)
             plt.close()
 
         # **Gestione dei file di monitoraggio per il sistema**
@@ -161,7 +161,7 @@ def generate_performance_graphs():
         plt.savefig(graph_path, dpi=300, bbox_inches="tight")  # ← `bbox_inches="tight"` evita il taglio della legenda
         plt.close()
 
-        logging.info(f"Grafici generati per il batch {i//3 + 1}")
+        logging.info(f"Grafici generati per il batch {i//5 + 1}")
 
 def get_kem_sig_from_csv(csv_file):
     """Recupera KEM e firma direttamente dal CSV, scegliendo il primo valore univoco disponibile."""
@@ -183,8 +183,8 @@ def generate_cumulative_boxplots():
     logging.info("Generazione dei boxplot cumulativi...")
 
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
-    if len(files) < 3:
-        logging.warning("Non ci sono almeno tre esecuzioni per generare i boxplot.")
+    if len(files) < 5:
+        logging.warning("Non ci sono almeno cinque esecuzioni per generare i boxplot.")
         return
 
     metrics = {
@@ -197,10 +197,10 @@ def generate_cumulative_boxplots():
     batch_data = {metric: [] for metric in metrics}
     batch_labels = []
 
-    for i in range(0, len(files), 3):
-        batch_files = files[i:i+3]
-        if len(batch_files) < 3:
-            logging.warning(f"Solo {len(batch_files)} file nel gruppo, salto il batch {i//3 + 1}.")
+    for i in range(0, len(files), 5):
+        batch_files = files[i:i+5]
+        if len(batch_files) < 5:
+            logging.warning(f"Solo {len(batch_files)} file nel gruppo, salto il batch {i//5 + 1}.")
             continue
 
         df_list = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in batch_files]
@@ -208,7 +208,7 @@ def generate_cumulative_boxplots():
         df = df[df["Status"] == "Success"]
 
         if df.empty:
-            logging.warning(f"Nessuna richiesta di successo per il batch {i//3 + 1}, non verranno generati grafici.")
+            logging.warning(f"Nessuna richiesta di successo per il batch {i//5 + 1}, non verranno generati grafici.")
             continue
 
         # **Recupera KEM e firma direttamente dal CSV del primo file nel batch**
@@ -226,7 +226,7 @@ def generate_cumulative_boxplots():
                     whiskerprops=dict(color='black', linewidth=2),
                     capprops=dict(color='black', linewidth=2),
                     medianprops=dict(color='red', linewidth=2),
-                    flierprops=dict(marker='o', color='red', markersize=6)
+                    flierprops=dict(marker='')
         )
 
         # **Adattamento dinamico dell'asse Y migliorato**
@@ -275,10 +275,12 @@ def convert_to_bytes(value, unit):
         raise ValueError(f"Unità non riconosciuta: {unit}")
 
 def analyze_pcap():
-    """Analizza il file pcap e calcola la media dei byte scambiati in upload e download."""
+    """Analizza il file pcap e calcola la media dei byte scambiati in upload, download e traffico TLS."""
     pcap_file = "/app/pcap/capture.pcap"
+    tls_keylog_file = "/tls_keys/tls-secrets.log"
     
     try:
+        # Analizza la connessione TCP generale
         result = subprocess.run(
             ["tshark", "-r", pcap_file, "-q", "-z", "conv,tcp"],
             capture_output=True,
@@ -288,7 +290,7 @@ def analyze_pcap():
 
         if result.returncode != 0:
             logging.error("Errore nell'analisi del file pcap con tshark")
-            return 0, 0
+            return 0, 0, 0, 0
 
         upload_bytes, download_bytes, num_connessioni = 0, 0, 0
 
@@ -311,25 +313,52 @@ def analyze_pcap():
                 upload_bytes += upload
                 download_bytes += download
 
-        if num_connessioni == 0:
-            logging.warning("Nessuna connessione TCP individuata nel file pcap.")
-            return 0, 0
+        # Analizza specificamente il traffico TLS con decrittazione
+        tls_result = subprocess.run(
+            ["tshark", "-r", pcap_file, "-Y", "tls.handshake", "-T", "fields", 
+             "-e", "ip.src", "-e", "tcp.srcport", "-e", "ip.dst", "-e", "tcp.dstport", 
+             "-e", "frame.len", "-e", "tls.handshake.type", "-o", f"tls.keylog_file:{tls_keylog_file}"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
 
-        media_upload = upload_bytes / num_connessioni
-        media_download = download_bytes / num_connessioni
+        tls_upload_bytes, tls_download_bytes = 0, 0
+        server_ip = "192.168.1.100"  # IP statico del server
+        
+        if tls_result.returncode == 0:
+            for line in tls_result.stdout.splitlines():
+                try:
+                    fields = line.split("\t")
+                    if len(fields) >= 6:
+                        src_ip, src_port, dst_ip, dst_port, frame_size, handshake_type = fields
+                        frame_size = int(frame_size)
+                        
+                        if dst_ip == server_ip:
+                            tls_upload_bytes += frame_size
+                        else:
+                            tls_download_bytes += frame_size
+                except ValueError:
+                    continue
+
+        avg_upload = upload_bytes / num_connessioni if num_connessioni > 0 else 0
+        avg_download = download_bytes / num_connessioni if num_connessioni > 0 else 0
+        avg_tls_upload = tls_upload_bytes / num_connessioni if num_connessioni > 0 else 0
+        avg_tls_download = tls_download_bytes / num_connessioni if num_connessioni > 0 else 0
 
         logging.info(f"Numero connessioni individuate: {num_connessioni}")
         logging.info(f"Totale upload: {upload_bytes} bytes | Totale download: {download_bytes} bytes")
-        logging.info(f"Media byte inviati: {media_upload:.2f} B | Media byte ricevuti: {media_download:.2f} B")
+        logging.info(f"Media byte inviati: {avg_upload:.2f} B | Media byte ricevuti: {avg_download:.2f} B")
+        logging.info(f"Media traffico TLS inviato: {avg_tls_upload:.2f} B | Media traffico TLS ricevuto: {avg_tls_download:.2f} B")
 
-        return media_upload, media_download
+        return avg_upload, avg_download, avg_tls_upload, avg_tls_download
 
     except subprocess.TimeoutExpired:
         logging.error("Timeout durante l'esecuzione di tshark.")
-        return 0, 0
+        return 0, 0, 0, 0
     except Exception as e:
         logging.error(f"Errore durante l'analisi: {e}")
-        return 0, 0
+        return 0, 0, 0, 0
 
 def update_average_report(request_results):
     """Genera il report delle medie delle metriche, aggiungendo KEM, Signature e analizzando il pcap."""
@@ -369,9 +398,9 @@ def update_average_report(request_results):
         avg_cpu, avg_ram = 0.0, 0.0
 
     # **Analisi del pcap per ottenere il traffico effettivo**
-    avg_upload, avg_download = analyze_pcap()
+    avg_upload, avg_download, avg_tls_upload, avg_tls_download = analyze_pcap()
 
-   # Aggiungi i campi al CSV
+    # Aggiungi i campi al CSV
     file_exists = os.path.exists(avg_file)
     with open(avg_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -380,11 +409,12 @@ def update_average_report(request_results):
                 "KEM", "Signature", "Avg_Connect_Time(ms)", "Avg_Handshake_Time(ms)", 
                 "Avg_Total_Time(ms)", "Avg_Elapsed_Time(ms)", "Client_Avg_CPU_Usage(%)", 
                 "Client_Avg_RAM_Usage(%)", "Avg_Upload_Bytes (Wireshark)", "Avg_Download_Bytes (Wireshark)",
+                "Avg_TLS_Upload_Bytes (Wireshark)", "Avg_TLS_Download_Bytes (Wireshark)",
                 "Avg_Logical_Bytes_Sent (cURL)", "Avg_Logical_Bytes_Received (cURL)"])
         writer.writerow([
             kem_used, sig_used, avg_connect_time, avg_handshake_time, avg_total_time, 
             avg_elapsed_time, avg_cpu, avg_ram, avg_upload, avg_download,
-            avg_logical_bytes_sent, avg_logical_bytes_received])
+            avg_tls_upload, avg_tls_download, avg_logical_bytes_sent, avg_logical_bytes_received])
 
     logging.info(f"Report delle medie aggiornato: {avg_file}")
 
@@ -392,9 +422,9 @@ def update_average_report(request_results):
     request_data = []
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")])
 
-    for i in range(0, len(files), 3):  # Processiamo solo ogni terzo file, evitando duplicazioni
-        if i + 3 <= len(files):  # Assicura che ci siano almeno 3 file per calcolare la media
-            batch_files = files[i:i+3]
+    for i in range(0, len(files), 5):  # Processiamo solo ogni quinto file, evitando duplicazioni
+        if i + 5 <= len(files):  # Assicura che ci siano almeno 5 file per calcolare la media
+            batch_files = files[i:i+5]
             dataframes = [pd.read_csv(os.path.join(OUTPUT_DIR, f)) for f in batch_files]
             df_avg = pd.concat(dataframes)[["Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)", "Cert_Size(B)"]].groupby(level=0).mean()
 
@@ -445,5 +475,5 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
 
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
 update_average_report(request_results)
-#generate_performance_graphs()
-#generate_cumulative_boxplots()
+generate_performance_graphs()
+generate_cumulative_boxplots()

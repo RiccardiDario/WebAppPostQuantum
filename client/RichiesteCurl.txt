@@ -14,6 +14,9 @@ curl --tlsv1.3 --curves kyber512 --cacert /opt/certs/CA.crt -v https://nginx_pq:
 Comando per analizzare il traffico all'interno del container del client:
 tshark -r /app/pcap/capture.pcap -q -z conv,tcp
 
+tshark -r /app/pcap/capture.pcap -Y "tls.handshake" -T fields -e ip.src -e tcp.srcport -e ip.dst -e tcp.dstport -e frame.len -e tls.handshake.type -o tls.keylog_file:/tls_keys/tls-secrets.log
+
+
 
 Il motivo della discrepanza che stai osservando (cioè, il fatto che nella cattura Wireshark risultano più byte scambiati rispetto ai log di trace di curl) è legato principalmente alla natura stessa dei dati che stai confrontando.
 
