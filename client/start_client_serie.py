@@ -473,7 +473,7 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         if result[5] == "Success": success_count += 1
         writer.writerow(result[:6] + [f"{success_count}/{NUM_REQUESTS}"] + result[6:])
 
-logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
 update_average_report(request_results)
 generate_performance_graphs()
 generate_cumulative_boxplots()
+logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
