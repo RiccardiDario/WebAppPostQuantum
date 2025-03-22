@@ -1,108 +1,61 @@
 import subprocess
 import time
-import os
 import re
 
 # Numero di test da eseguire
 NUM_RUNS = 5
-TIMEOUT_SECONDS = 300  # Massimo tempo d'attesa per la generazione dei file
+TIMEOUT_SECONDS = 300
+SLEEP_INTERVAL = 2
 
-# Directory dei log e dei report
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(BASE_DIR, "report", "filtered_logs")
-GRAPH_DIR = os.path.join(BASE_DIR, "report", "request_logs", "graphs")  # Cartella dei grafici
+# Nomi reali dei container
+CONTAINER_CLIENT = "client_analysis"
+CONTAINER_SERVER = "nginx_pq"
 
-FILE_PREFIX = "monitor_nginx_filtered"
-FILE_EXTENSION = ".csv"
+# Pattern univoci che indicano la fine dell’esecuzione
+CLIENT_DONE_PATTERN = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv"
+SERVER_DONE_PATTERN = r"--- Informazioni RAM ---"
 
-def ensure_output_directory():
-    """Crea la cartella di output se non esiste"""
-    if not os.path.exists(OUTPUT_DIR):
-        print(f"📂 Creazione cartella: {OUTPUT_DIR}")
-        os.makedirs(OUTPUT_DIR)
-
-def get_latest_file_index():
-    """Trova l'ultimo file numerato di monitor_nginx_filtered.csv, se esiste"""
-    if not os.path.exists(OUTPUT_DIR):
-        return 0  # Nessun file trovato perché la cartella non esiste ancora
-
-    existing_files = [f for f in os.listdir(OUTPUT_DIR) if f.startswith(FILE_PREFIX) and f.endswith(FILE_EXTENSION)]
-    numbers = [int(re.search(r"(\d+)", f).group(1)) for f in existing_files if re.search(r"(\d+)", f)]
+def check_logs_for_completion(container_name, pattern):
+    """Controlla i log recenti del container per la presenza del pattern specificato."""
+    log_command = ["docker", "logs", "--tail", "100", container_name]
     
-    return max(numbers) if numbers else 0  # Restituisce 0 se nessun file è presente
-
-def get_last_modified_time(file_path):
-    """Restituisce il timestamp dell'ultima modifica di un file, oppure None se il file non esiste."""
-    return os.path.getmtime(file_path) if os.path.exists(file_path) else None
-
-def wait_for_updated_graph():
-    """Aspetta che l'ultimo boxplot venga aggiornato durante questa esecuzione."""
-    metrics = ["Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)"]
-    last_graph_path = os.path.join(GRAPH_DIR, f"{metrics[-1]}_cumulative_boxplot.png")  # Ultimo grafico atteso
-
-    # Controlliamo quando è stato modificato l'ultima volta
-    last_mod_time = get_last_modified_time(last_graph_path)
-    print(f"🕵️  Ultima modifica rilevata: {time.ctime(last_mod_time) if last_mod_time else 'Nessun file'}")
-
-    start_time = time.time()
-    while time.time() - start_time < TIMEOUT_SECONDS:
-        new_mod_time = get_last_modified_time(last_graph_path)
-        
-        # Se il file non esiste o non è stato aggiornato, continuiamo ad aspettare
-        if new_mod_time and last_mod_time and new_mod_time > last_mod_time:
-            print(f"✅ Il grafico {last_graph_path} è stato aggiornato!")
-            return True
-        
-        time.sleep(2)  # Controllo ogni 2 secondi
-
-    print(f"⚠️ Timeout raggiunto ({TIMEOUT_SECONDS} sec), il grafico non è stato aggiornato.")
-    return False
-
-# Assicuriamoci che le cartelle esistano prima di partire
-ensure_output_directory()
+    try:
+        result = subprocess.run(log_command, capture_output=True, text=True, timeout=5)
+        logs = result.stdout
+        return re.search(pattern, logs) is not None
+    except subprocess.TimeoutExpired:
+        print(f"⚠️ Timeout nella lettura dei log di {container_name}.")
+        return False
 
 for i in range(1, NUM_RUNS + 1):
     print(f"\n🚀 Avvio test numero {i}...")
 
-    # Trova l'ultimo file numerato prima di avviare il test
-    last_file_index = get_latest_file_index()
-    print(f"🔍 Ultimo file di monitor rilevato: {FILE_PREFIX}{last_file_index}.csv (se esiste)")
-
-    # Avvia i container con Docker Compose
     subprocess.run(["docker-compose", "up", "--build", "-d"], check=True)
-
-    print(f"⌛ In attesa che il file {FILE_PREFIX}{last_file_index + 1}.csv venga generato...")
+    print(f"⌛ Attesa completamento log dei container...")
 
     start_time = time.time()
+    client_done = server_done = False
 
-    while True:
-        # Controlliamo se il file di monitor è stato aggiornato
-        current_file_index = get_latest_file_index()
+    while time.time() - start_time < TIMEOUT_SECONDS:
+        if not client_done:
+            client_done = check_logs_for_completion(CONTAINER_CLIENT, CLIENT_DONE_PATTERN)
+        if not server_done:
+            server_done = check_logs_for_completion(CONTAINER_SERVER, SERVER_DONE_PATTERN)
 
-        # Se il file è stato aggiornato, possiamo procedere
-        if current_file_index > last_file_index:
-            print(f"✅ Il file {FILE_PREFIX}{current_file_index}.csv è stato generato.")
+        if client_done and server_done:
+            print(f"✅ Test {i} completato da entrambi i container.")
             break
 
-        # Controllo timeout per evitare blocchi infiniti
-        if time.time() - start_time > TIMEOUT_SECONDS:
-            print(f"⚠️ Timeout raggiunto ({TIMEOUT_SECONDS} sec), fermo i container.")
-            break
+        time.sleep(SLEEP_INTERVAL)
 
-        time.sleep(2)  # Controllo ogni 2 secondi
+    else:
+        print(f"⚠️ Timeout raggiunto ({TIMEOUT_SECONDS} sec). Arresto forzato.")
 
-    # **Solo alla quinta iterazione, controlliamo se il grafico finale è stato generato e aggiornato**
-    if i == 5:
-        print("⌛ Controllo la generazione e aggiornamento dell'ultimo boxplot prima di fermare i container...")
-        wait_for_updated_graph()
-
-    # Arresta i container dopo il test
-    print(f"🛑 Fermando i container dopo il test numero {i}...")
+    print(f"🛑 Arresto dei container (test {i})...")
     subprocess.run(["docker-compose", "down"], check=True)
 
-    # Pausa tra un'esecuzione e l'altra per evitare errori di misurazione
     if i < NUM_RUNS:
-        print("⏳ Attesa di 2 secondi prima del prossimo test...")
+        print("⏳ Pausa di 2 secondi prima del test successivo...")
         time.sleep(2)
 
-print("\n🎉 Tutti i test sono stati completati con successo!")
+print("\n🎉 Tutti i test completati con successo!")

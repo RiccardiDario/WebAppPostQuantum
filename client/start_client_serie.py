@@ -3,17 +3,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "secp256r1", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR = "/app/output/request_logs", "/app/output/system_logs", "/app/logs/"
 for directory in (TRACE_LOG_DIR, OUTPUT_DIR, MONITOR_DIR): os.makedirs(directory, exist_ok=True)
 GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/graphs/", f"{OUTPUT_DIR}/avg/"
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
-
-active_requests, active_requests_lock, global_stats = 0, Lock(), {"cpu_usage": [], "memory_usage": []}
-NUM_REQUESTS, kem, sig_alg = 500, "Unknown", "Unknown"
+NUM_REQUESTS,active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
 def get_next_filename(base_path, base_name, extension):
     """Genera il nome del file con numerazione incrementale."""
@@ -35,8 +33,8 @@ def monitor_system():
 
 def execute_request(req_num):
     """Esegue una richiesta HTTPS con curl, verifica HTTP 200 e analizza il file di trace generato."""
-    global active_requests, kem, sig_alg
-    trace_file, cert_size = f"{TRACE_LOG_DIR}trace_{req_num}.log", 0
+    global active_requests
+    trace_file, cert_size, kem, sig_alg  = f"{TRACE_LOG_DIR}trace_{req_num}.log", 0, "Unknown", "Unknown"
     with active_requests_lock: active_requests += 1  
     try:
         start = time.time()
