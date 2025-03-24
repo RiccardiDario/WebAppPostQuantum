@@ -74,11 +74,7 @@ def generate_server_performance_graphs():
 
     print("Generazione dei grafici di performance del server...")
 
-    monitor_files = sorted(
-    [f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")],
-    key=extract_monitor_server_number
-)
-
+    monitor_files = sorted([f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")], key=extract_monitor_server_number)
 
     if len(monitor_files) < 5:
         print("Non ci sono abbastanza file per generare i grafici.")
@@ -130,7 +126,6 @@ def generate_server_performance_graphs():
         plt.close()
 
         print(f"Grafico generato: {graph_path}")
-
 
 def monitor_resources():
     print("Inizio monitoraggio delle risorse...")
