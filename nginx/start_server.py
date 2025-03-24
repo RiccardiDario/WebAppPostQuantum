@@ -1,7 +1,5 @@
 import subprocess, re, psutil, csv, time, os, pandas as pd, matplotlib.pyplot as plt
 from datetime import datetime
-from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 
 def get_next_filename(path, name, ext, counter=1):
     while os.path.exists(f"{path}/{name}{counter}.{ext}"): counter += 1
@@ -18,50 +16,82 @@ RESOURCE_LOG, OUTPUT_FILE = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx",
 ACCESS_LOG, EXPECTED_REQUESTS, SAMPLING_INTERVAL = "/opt/nginx/logs/access_custom.log", 500, 0.1
 AVG_METRICS_FILE = f"{FILTERED_LOG_DIR}/avg_nginx_usage.csv"
 
+def extract_monitor_server_number(filename):
+    match = re.search(r"monitor_nginx_filtered(\d+)", filename)
+    return int(match.group(1)) if match else -1
+
 def get_kem_sig_from_logs(log_path, cert_path):
-    """Estrae il KEM dal log di accesso e la firma dal certificato del server Nginx."""
+    """Estrae il KEM e la Signature Algorithm in forma leggibile (mappando solo i codici grezzi)."""
+
     kem, sig_alg = "Unknown", "Unknown"
 
-    # 📌 **Estrazione del KEM dai log di accesso di Nginx**
+    # Mappa KEM grezzi (esadecimali) → nomi leggibili
+    kem_map = {
+        "0x0200": "mlkem512",
+        "0x0201": "mlkem768",
+        "0x0202": "mlkem1024"
+    }
+
+    # Mappa OID → nomi leggibili
+    sig_oid_map = {
+        "2.16.840.1.101.3.4.3.17": "mldsa44",
+        "2.16.840.1.101.3.4.3.18": "mldsa65",
+        "2.16.840.1.101.3.4.3.19": "mldsa87"
+    }
+
+    # 📌 Estrazione del KEM dal log
+    # 📌 Estrazione del KEM dal log
     try:
         with open(log_path, "r") as f:
-            for line in reversed(f.readlines()):  # Legge i log dall'ultima richiesta in poi
-                kem_match = re.search(r'KEM=([\w\d_-]+)', line)
+            for line in reversed(f.readlines()):
+                kem_match = re.search(r'KEM=([\w\d._:-]+)', line)
                 if kem_match:
-                    kem = kem_match.group(1)
-                    break  # Prendi l'ultimo KEM usato nelle richieste
+                    raw_kem = kem_match.group(1)
+                    kem = kem_map.get(raw_kem, raw_kem)
+                    break
     except Exception as e:
         print(f"Errore nella lettura dei log di accesso di Nginx: {e}")
 
-    # 📌 **Estrazione dell'algoritmo di firma dal certificato di Nginx**
+    # 📌 Estrazione Signature OID con openssl
     try:
-        with open(cert_path, "rb") as cert_file:
-            cert_data = cert_file.read()
-        cert = x509.load_pem_x509_certificate(cert_data, default_backend())
-        sig_alg = cert.signature_algorithm_oid._name  # Estrai l'algoritmo di firma
+        result = subprocess.run(
+            ["openssl", "x509", "-in", cert_path, "-noout", "-text"],
+            capture_output=True, text=True, check=True
+        )
+        for line in result.stdout.splitlines():
+            if "Signature Algorithm" in line:
+                oid = line.strip().split()[-1]
+                sig_alg = oid if oid.isalnum() else sig_oid_map.get(oid, oid)
+                break
     except Exception as e:
-        print(f"Errore nell'estrazione della firma dal certificato: {e}")
+        print(f"Errore nell'estrazione della firma dal certificato con openssl: {e}")
         sig_alg = "Unknown"
 
     return kem, sig_alg
 
 def generate_server_performance_graphs():
-    """Genera i grafici relativi alle risorse utilizzate da Nginx ogni cinque file rilevati."""
+    """Genera i grafici delle risorse usate da Nginx per ogni batch di 5 file monitorati."""
+
     print("Generazione dei grafici di performance del server...")
 
-    FILTERED_LOG_DIR = "/opt/nginx/output/filtered_logs"
-    monitor_files = sorted([f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")])
+    monitor_files = sorted(
+    [f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")],
+    key=extract_monitor_server_number
+)
+
 
     if len(monitor_files) < 5:
         print("Non ci sono abbastanza file per generare i grafici.")
         return
 
-    log_path = "/opt/nginx/logs/access_custom.log"
-    cert_path = "/etc/nginx/certs/qsc-ca-chain.crt"
-    kem, sig_alg = get_kem_sig_from_logs(log_path, cert_path)
-
     for i in range(0, len(monitor_files), 5):
         batch_files = monitor_files[i:i+5]
+        if len(batch_files) < 5:
+            print(f"Batch incompleto da {len(batch_files)} file, salto.")
+            continue
+
+        # Estrai KEM e Signature per il batch attuale
+        kem, sig_alg = get_kem_sig_from_logs(ACCESS_LOG, "/etc/nginx/certs/qsc-ca-chain.crt")
 
         # Leggi i dati dei file batch
         dataframes = [pd.read_csv(os.path.join(FILTERED_LOG_DIR, f)) for f in batch_files]
@@ -80,6 +110,7 @@ def generate_server_performance_graphs():
 
         sample_indices = (df_monitor_avg["Index"] * 0.1 * 1000).tolist()
 
+        # Plot
         plt.figure(figsize=(14, 7))
         plt.plot(sample_indices, df_monitor_avg["CPU (%)"], label="CPU Usage (%)", color="red", marker="o", linestyle="-")
         plt.plot(sample_indices, df_monitor_avg["Mem (%)"], label="Memory Usage (%)", color="blue", marker="o", linestyle="-")
@@ -99,6 +130,7 @@ def generate_server_performance_graphs():
         plt.close()
 
         print(f"Grafico generato: {graph_path}")
+
 
 def monitor_resources():
     print("Inizio monitoraggio delle risorse...")

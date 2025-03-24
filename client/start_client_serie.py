@@ -394,6 +394,7 @@ def generate_graphs_from_average_per_request():
         "Avg_Elapsed_Time(ms)": []
     }
 
+    # Ciclo sui batch
     for b in range(total_batches):
         df_batch = df.iloc[b * requests_per_batch:(b + 1) * requests_per_batch]
         kem = df_batch["KEM"].iloc[0]
@@ -406,11 +407,11 @@ def generate_graphs_from_average_per_request():
         for metric in boxplot_data:
             boxplot_data[metric].append(df_batch[metric].tolist())
 
-        # Genera grafici a blocchi da 100
+        # Genera grafici a blocchi da 100 (x locale al batch)
         for i in range(0, requests_per_batch, requests_per_plot):
-            start = b * requests_per_batch + i + 1
-            end = min(start + requests_per_plot - 1, (b + 1) * requests_per_batch)
-            df_subset = df_batch.iloc[i:i+requests_per_plot].reset_index(drop=True)
+            start = i + 1
+            end = min(i + requests_per_plot, requests_per_batch)
+            df_subset = df_batch.iloc[i:i + requests_per_plot].reset_index(drop=True)
             x = list(range(start, end + 1))
             cert_str = f"{cert_size:.2f} B"
 
@@ -422,48 +423,59 @@ def generate_graphs_from_average_per_request():
             plt.title(f"Elapsed Time per Request\nKEM: {kem} | Signature: {sig}")
             plt.legend(title=f"Certificate Size: {cert_str}")
             plt.grid(True)
-            fname = f"1elapsed_time_graph_batch_{b+1}_{start}_{end}.png"
+            fname = f"elapsed_time_graph_batch_{b+1}_{start}_{end}.png"
             plt.tight_layout()
             plt.savefig(os.path.join(GRAPH_DIR, fname))
             plt.close()
 
-            # TLS Breakdown
+            # TLS Breakdown corretto (impilato ma realistico)
+            connect = df_subset["Avg_Connect_Time(ms)"]
+            handshake = df_subset["Avg_Handshake_Time(ms)"] - connect
+            total = df_subset["Avg_Total_Time(ms)"] - df_subset["Avg_Handshake_Time(ms)"]
+
             plt.figure(figsize=(14, 7))
-            plt.bar(x, df_subset["Avg_Connect_Time(ms)"], label="Connect Time", color="red", alpha=0.7)
-            plt.bar(x, df_subset["Avg_Handshake_Time(ms)"], bottom=df_subset["Avg_Connect_Time(ms)"], label="TLS Handshake Time", color="orange", alpha=0.7)
-            plt.bar(x, df_subset["Avg_Total_Time(ms)"], bottom=df_subset["Avg_Handshake_Time(ms)"], label="Total Time", color="gray", alpha=0.7)
+            plt.bar(x, connect, label="Connect Time", color="red", alpha=0.7)
+            plt.bar(x, handshake, bottom=connect, label="TLS Handshake Time", color="orange", alpha=0.7)
+            plt.bar(x, total, bottom=df_subset["Avg_Handshake_Time(ms)"], label="Total Time", color="gray", alpha=0.7)
             plt.xlabel("Request Completion Order")
             plt.ylabel("Time (ms)")
             plt.title(f"Timing Breakdown for TLS Connections\nKEM: {kem} | Signature: {sig}")
             plt.legend(title=f"Certificate Size: {cert_str}")
             plt.grid(axis="y", linestyle="--", alpha=0.7)
-            fname_bar = f"1tls_avg_graph_batch_{b+1}_{start}_{end}.png"
+            fname_bar = f"tls_avg_graph_batch_{b+1}_{start}_{end}.png"
             plt.tight_layout()
             plt.savefig(os.path.join(GRAPH_DIR, fname_bar), dpi=300)
             plt.close()
 
-    # Crea i boxplot una volta sola dopo aver raccolto tutto
+    # ✅ Fuori dal ciclo: genera una sola volta i boxplot cumulativi
     for metric, ylabel in {
         "Avg_Connect_Time(ms)": "Connect Time (ms)",
         "Avg_Handshake_Time(ms)": "Handshake Time (ms)",
         "Avg_Total_Time(ms)": "Total Time (ms)",
         "Avg_Elapsed_Time(ms)": "Elapsed Time (ms)"
     }.items():
-        plt.figure(figsize=(12, 6))
-        plt.boxplot(boxplot_data[metric], patch_artist=True,
-                    boxprops=dict(facecolor='lightblue', alpha=0.7, edgecolor='black', linewidth=1.5),
-                    whiskerprops=dict(color='black', linewidth=2),
-                    capprops=dict(color='black', linewidth=2),
-                    medianprops=dict(color='red', linewidth=2),
-                    flierprops=dict(marker=''))
+        num_boxes = len(batch_labels)
+        fig = plt.figure(figsize=(max(6, num_boxes * 1.2), 6))
+        ax = fig.add_axes([0.1, 0.15, 0.8, 0.75])  # [left, bottom, width, height]
 
-        plt.title(ylabel)
-        plt.ylabel(ylabel)
-        plt.xticks(range(1, len(batch_labels)+1), batch_labels, rotation=30, ha="right")
-        plt.tight_layout()
-        path = os.path.join(GRAPH_DIR, f"{ylabel.replace(' ', '_')}_cumulative_boxplot1.png")
-        plt.savefig(path, dpi=300)
-        plt.close()
+        data = [item for sublist in boxplot_data[metric] for item in sublist]
+
+        ax.boxplot(boxplot_data[metric], patch_artist=True,
+                   boxprops=dict(facecolor='lightblue', alpha=0.7, edgecolor='black', linewidth=1.5),
+                   whiskerprops=dict(color='black', linewidth=2),
+                   capprops=dict(color='black', linewidth=2),
+                   medianprops=dict(color='red', linewidth=2),
+                   flierprops=dict(marker='o', color='black', markersize=6, alpha=0.6))  # ✅ outlier visibili
+
+        ax.set_title(ylabel)
+        ax.set_ylabel(ylabel)
+        ax.set_xticks(range(1, num_boxes + 1))
+        ax.set_xticklabels(batch_labels, rotation=30, ha="right")
+
+        path = os.path.join(GRAPH_DIR, f"{ylabel.replace(' ', '_')}_cumulative_boxplot.png")
+        fig.savefig(path, dpi=300)
+        plt.close(fig)
+
 
 OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
 MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
