@@ -29,14 +29,20 @@ def get_kem_sig_from_logs(log_path, cert_path):
     kem_map = {
         "0x0200": "mlkem512",
         "0x0201": "mlkem768",
-        "0x0202": "mlkem1024"
+        "0x0202": "mlkem1024",
+        "0x2f4b": "p256_mlkem512",
+        "0x2f4c": "p384_mlkem768",
+        "0x2f4d": "p521_mlkem1024",
     }
 
     # Mappa OID → nomi leggibili
     sig_oid_map = {
         "2.16.840.1.101.3.4.3.17": "mldsa44",
         "2.16.840.1.101.3.4.3.18": "mldsa65",
-        "2.16.840.1.101.3.4.3.19": "mldsa87"
+        "2.16.840.1.101.3.4.3.19": "mldsa87",
+        "1.3.9999.7.5": "p256_mldsa44",
+        "1.3.9999.7.7": "p384_mldsa65",
+        "1.3.9999.7.8": "p521_mldsa87"
     }
 
     # 📌 Estrazione del KEM dal log
@@ -74,7 +80,11 @@ def generate_server_performance_graphs():
 
     print("Generazione dei grafici di performance del server...")
 
-    monitor_files = sorted([f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")], key=extract_monitor_server_number)
+    monitor_files = sorted(
+        [f for f in os.listdir(FILTERED_LOG_DIR)
+         if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")],
+        key=extract_monitor_server_number
+    )
 
     if len(monitor_files) < 5:
         print("Non ci sono abbastanza file per generare i grafici.")
@@ -82,8 +92,16 @@ def generate_server_performance_graphs():
 
     for i in range(0, len(monitor_files), 5):
         batch_files = monitor_files[i:i+5]
+        batch_index = i // 5 + 1
+        graph_path = os.path.join(GRAPH_DIR, f"server_cpu_memory_usage_batch_{batch_index}.png")
+
         if len(batch_files) < 5:
             print(f"Batch incompleto da {len(batch_files)} file, salto.")
+            continue
+
+        # ✅ Salta il batch se il grafico è già stato generato
+        if os.path.exists(graph_path):
+            print(f"Grafico già esistente per batch {batch_index}, salto.")
             continue
 
         # Estrai KEM e Signature per il batch attuale
@@ -106,24 +124,24 @@ def generate_server_performance_graphs():
 
         sample_indices = (df_monitor_avg["Index"] * 0.1 * 1000).tolist()
 
-        # Plot
-        plt.figure(figsize=(14, 7))
-        plt.plot(sample_indices, df_monitor_avg["CPU (%)"], label="CPU Usage (%)", color="red", marker="o", linestyle="-")
-        plt.plot(sample_indices, df_monitor_avg["Mem (%)"], label="Memory Usage (%)", color="blue", marker="o", linestyle="-")
-        plt.xlabel("Time (ms)")
-        plt.ylabel("Usage (%)")
-        plt.title(f"Server Resource Usage (Avg. CPU & Memory) Over Time\nKEM: {kem} | Signature: {sig_alg}")
+        # Plot isolato con figure e axes
+        fig, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(sample_indices, df_monitor_avg["CPU (%)"], label="CPU Usage (%)", color="red", marker="o", linestyle="-")
+        ax.plot(sample_indices, df_monitor_avg["Mem (%)"], label="Memory Usage (%)", color="blue", marker="o", linestyle="-")
 
-        plt.legend(
+        ax.set_xlabel("Time (ms)")
+        ax.set_ylabel("Usage (%)")
+        ax.set_title(f"Server Resource Usage (Avg. CPU & Memory) Over Time\nKEM: {kem} | Signature: {sig_alg}")
+
+        ax.legend(
             title=f"KEM: {kem} | Signature: {sig_alg}",
             loc="upper left",
             bbox_to_anchor=(1, 1)
         )
 
-        plt.grid(True, linestyle="--", alpha=0.7)
-        graph_path = os.path.join(GRAPH_DIR, f"server_cpu_memory_usage_batch_{i//5 + 1}.png")
-        plt.savefig(graph_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        ax.grid(True, linestyle="--", alpha=0.7)
+        fig.savefig(graph_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
 
         print(f"Grafico generato: {graph_path}")
 
