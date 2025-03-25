@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem768", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
