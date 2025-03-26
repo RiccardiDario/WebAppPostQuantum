@@ -1,59 +1,95 @@
-import subprocess, time, re, os
 # Configurazioni da testare
-#sig_list = [ "ecdsa_p256", "ecdsa_p384", "ecdsa_p521", "mldsa44", "mldsa65", "mldsa87", "p256_mldsa44", "p384_mldsa65", "p521_mldsa87"]
-#kem_list = ["secp256r1", "secp384r1", "secp521r1", "mlkem512", "mlkem768", "mlkem1024","p256_mlkem512", "p384_mlkem768", "p521_mlkem1024"]
+#sig_list = [ "ecdsa_p256", "mldsa44", "p256_mldsa44", "ecdsa_p384", "mldsa65", "p384_mldsa65", "ecdsa_p521", "mldsa87", "p521_mldsa87"]
+#kem_list = ["secp256r1", "mlkem512", "p256_mlkem512", "secp384r1", "mlkem768", "p384_mlkem768", "secp521r1", "mlkem1024","p521_mlkem1024"]
 
-sig_list = [ "ecdsa_p256", "mldsa44", "p256_mldsa44"]
-kem_list = ["secp256r1", "mlkem512","p256_mlkem512"]
+import subprocess
+import time
+import re
+import os
+sig_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"]
+kem_list = ["secp521r1", "mlkem1024","p521_mlkem1024"]
+
 NUM_RUNS, TIMEOUT, SLEEP = 5, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv"
 SERVER_DONE = r"--- Informazioni RAM ---"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-START_CLIENT_PATH = os.path.join(BASE_DIR, "client", "start_client_serie.py")
+START_CLIENT_PATH = os.path.join(BASE_DIR, "client", "start_client.py")
 ENV_PATH = os.path.join(BASE_DIR, "cert-generator", ".env")
 
-def check_logs(container, pattern):
+
+def run_subprocess(command, timeout=None):
+    """Esegue un comando e forza la chiusura del processo"""
     try:
-        out = subprocess.run(["docker", "logs", "--tail", "100", container], capture_output=True, text=True, timeout=5)
-        return re.search(pattern, out.stdout) is not None
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return proc.returncode, stdout, stderr
     except subprocess.TimeoutExpired:
-        print(f"⚠️ Timeout nella lettura dei log di {container}."); return False
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        return -1, "", "⏱️ Timeout scaduto. Processo terminato forzatamente."
+
+def check_logs(container, pattern):
+    code, stdout, stderr = run_subprocess(["docker", "logs", "--tail", "100", container], timeout=5)
+    if stdout:
+        return re.search(pattern, stdout) is not None
+    return False
+
 
 def update_kem(kem):
     with open(START_CLIENT_PATH, "r", encoding="utf-8") as f:
         content = re.sub(r'("--curves",\s*")[^"]+(")', f'\\1{kem}\\2', f.read())
-    with open(START_CLIENT_PATH, "w", encoding="utf-8") as f: f.write(content)
+    with open(START_CLIENT_PATH, "w", encoding="utf-8") as f:
+        f.write(content)
     print(f"✅ KEM aggiornato: {kem}")
+
 
 def update_sig(sig):
     with open(ENV_PATH, "r", encoding="utf-8") as f:
         lines = [f"SIGNATURE_ALGO={sig}\n" if l.startswith("SIGNATURE_ALGO=") else l for l in f]
-    with open(ENV_PATH, "w", encoding="utf-8") as f: f.writelines(lines)
+    with open(ENV_PATH, "w", encoding="utf-8") as f:
+        f.writelines(lines)
     print(f"✅ Signature aggiornata: {sig}")
 
-# Esecuzione batch
+
+def run_single_test(i):
+    print(f"\n🚀 Test {i} in corso...")
+
+    # Avvio container
+    code, _, err = run_subprocess(["docker-compose", "up", "--force-recreate", "-d"], timeout=30)
+    if code != 0:
+        print(f"❌ Errore avvio container: {err}")
+        return
+
+    print("⌛ In attesa completamento log...")
+
+    start = time.time()
+    while time.time() - start < TIMEOUT:
+        if check_logs(CLIENT, CLIENT_DONE) and check_logs(SERVER, SERVER_DONE):
+            print(f"✅ Test {i} completato.")
+            break
+        time.sleep(SLEEP)
+    else:
+        print(f"⚠️ Timeout test {i} dopo {TIMEOUT} secondi.")
+
+    print("🛑 Arresto container...")
+    run_subprocess(["docker-compose", "down"], timeout=30)
+
+    if i < NUM_RUNS:
+        time.sleep(SLEEP)
+
+
+# Esecuzione principale
 for kem, sig in zip(kem_list, sig_list):
-    print(f"\n🔁 Batch con KEM: {kem}, Signature: {sig}")
-    update_kem(kem); update_sig(sig)
+    print(f"\n🔁 Inizio test per KEM: {kem}, Signature: {sig}")
+    update_kem(kem)
+    update_sig(sig)
 
     for i in range(1, NUM_RUNS + 1):
-        print(f"\n🚀 Test {i} in corso...")
-        subprocess.run(["docker-compose", "up", "--force-recreate", "-d"], check=True)
-        print("⌛ Attesa log container...")
+        run_single_test(i)
 
-        start = time.time()
-        while time.time() - start < TIMEOUT:
-            if check_logs(CLIENT, CLIENT_DONE) and check_logs(SERVER, SERVER_DONE):
-                print(f"✅ Test {i} completato."); break
-            time.sleep(SLEEP)
-        else:
-            print(f"⚠️ Timeout ({TIMEOUT}s).")
-
-        print("🛑 Arresto container...")
-        subprocess.run(["docker-compose", "down"], check=True)
-        if i < NUM_RUNS:
-            print("⏳ Pausa..."); time.sleep(SLEEP)
-
-print("\n🎉 Tutti i batch completati con successo!")
+print("\n🎉 Tutti i test completati con successo!")
