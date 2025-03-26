@@ -318,40 +318,24 @@ def generate_graphs_from_average_per_request():
         plt.close(fig)
 
 def wait_and_lock_server():
-    print("🔁 Sync con Nginx/Flask via HTTPS (usando curl post-quantum)...")
+    print("🔁 Sync con Nginx/Flask via HTTPS (curl post-quantum)...")
     while True:
         try:
-            # 1. Verifica stato /status
-            result = subprocess.run(
-                ["curl", "-s", "-k", "--tlsv1.3", "--curves", "mlkem768", f"{BASE_URL}/status"],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-            )
-
-            if result.returncode != 0 or not result.stdout.strip():
-                raise Exception("curl fallita o risposta vuota")
-
-            # 2. Prova a fare il parsing del JSON
-            try:
-                response = json.loads(result.stdout)
+            r = subprocess.run(["curl", "-s", "-k", "--tlsv1.3", "--curves", "mlkem768", f"{BASE_URL}/status"],stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True )
+            if r.returncode != 0 or not r.stdout.strip():
+                raise Exception("Nessuna risposta")
+            try: res = json.loads(r.stdout)
             except json.JSONDecodeError:
-                raise Exception(f"Risposta non JSON valida: {result.stdout.strip()}")
-
-            # 3. Analizza il flag
-            if response.get("ready") is True:
-                print("⏳ Test in corso. Attendo il riavvio del server...")
+                raise Exception(f"Risposta non JSON valida: {r.stdout.strip()}")
+            if res.get("ready") is True:
+                print("⏳ Test in corso. Attendo riavvio server...")
             else:
-                # 4. Prova a settare /ready
-                post = subprocess.run(
-                    ["curl", "-s", "-k", "--tlsv1.3", "--curves", "mlkem768", "-X", "POST", f"{BASE_URL}/ready"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-                if post.returncode == 0:
-                    print("✅ Server lockato. Avvio richieste.")
-                    break
+                p = subprocess.run(["curl", "-s", "-k", "--tlsv1.3", "--curves", "mlkem768", "-X", "POST", f"{BASE_URL}/ready"],stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if p.returncode == 0:
+                    print("✅ Server lockato. Avvio richieste."); break
 
         except Exception as e:
-            print(f"❌ Nginx/Flask non ancora raggiungibile. Retry... ({e})")
-
+            print(f"❌ Server non pronto. Retry... ({e})")
         time.sleep(1)
 
 def extract_request_number(filename): return int(m.group(1)) if (m := re.search(r"request_client(\d+)", filename)) else -1
