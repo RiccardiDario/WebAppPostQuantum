@@ -3,8 +3,8 @@ import subprocess, time, re, os
 #sig_list = [ "ecdsa_p256", "ecdsa_p384", "ecdsa_p521", "mldsa44", "mldsa65", "mldsa87", "p256_mldsa44", "p384_mldsa65", "p521_mldsa87"]
 #kem_list = ["secp256r1", "secp384r1", "secp521r1", "mlkem512", "mlkem768", "mlkem1024","p256_mlkem512", "p384_mlkem768", "p521_mlkem1024"]
 
-kem_list = ["mlkem512", "mlkem768"]
-sig_list = ["mldsa44","mldsa65"]
+sig_list = [ "ecdsa_p256", "mldsa44", "p256_mldsa44"]
+kem_list = ["secp256r1", "mlkem512","p256_mlkem512"]
 NUM_RUNS, TIMEOUT, SLEEP = 5, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv"
