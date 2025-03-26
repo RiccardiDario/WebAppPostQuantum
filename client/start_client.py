@@ -1,17 +1,17 @@
-import os, re, math, time, logging, subprocess, csv, psutil, pandas as pd, matplotlib.pyplot as plt
+import requests, json, os, re, math, time, logging, subprocess, csv, psutil, pandas as pd, matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem768", "--cacert", "/opt/certs/CA.crt", "-w",
-"Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", "https://nginx_pq:4433"]
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
-OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR = "/app/output/request_logs", "/app/output/system_logs", "/app/logs/"
+OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR, BASE_URL = "/app/output/request_logs", "/app/output/system_logs", "/app/logs/", "https://nginx_pq:4433"
 for directory in (TRACE_LOG_DIR, OUTPUT_DIR, MONITOR_DIR): os.makedirs(directory, exist_ok=True)
 GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/graphs/", f"{OUTPUT_DIR}/avg/"
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
+
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem768", "--cacert", "/opt/certs/CA.crt", "-w",
+"Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
     counter = 1
@@ -317,10 +317,48 @@ def generate_graphs_from_average_per_request():
         plt.savefig(os.path.join(GRAPH_DIR, f"{ylabel.replace(' ', '_')}_cumulative_boxplot.png"), dpi=300)
         plt.close(fig)
 
+def wait_and_lock_server():
+    print("🔁 Sync con Nginx/Flask via HTTPS (usando curl post-quantum)...")
+    while True:
+        try:
+            # 1. Verifica stato /status
+            result = subprocess.run(
+                ["curl", "-s", "-k", "--tlsv1.3", "--curves", "mlkem768", f"{BASE_URL}/status"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+            )
+
+            if result.returncode != 0 or not result.stdout.strip():
+                raise Exception("curl fallita o risposta vuota")
+
+            # 2. Prova a fare il parsing del JSON
+            try:
+                response = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                raise Exception(f"Risposta non JSON valida: {result.stdout.strip()}")
+
+            # 3. Analizza il flag
+            if response.get("ready") is True:
+                print("⏳ Test in corso. Attendo il riavvio del server...")
+            else:
+                # 4. Prova a settare /ready
+                post = subprocess.run(
+                    ["curl", "-s", "-k", "--tlsv1.3", "--curves", "mlkem768", "-X", "POST", f"{BASE_URL}/ready"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                if post.returncode == 0:
+                    print("✅ Server lockato. Avvio richieste.")
+                    break
+
+        except Exception as e:
+            print(f"❌ Nginx/Flask non ancora raggiungibile. Retry... ({e})")
+
+        time.sleep(1)
+
 def extract_request_number(filename): return int(m.group(1)) if (m := re.search(r"request_client(\d+)", filename)) else -1
 def extract_monitor_number(filename): return int(m.group(1)) if (m := re.search(r"system_client(\d+)", filename)) else -1
 OUTPUT_FILE, file_index = get_next_filename(OUTPUT_DIR, "request_client", "csv")
 MONITOR_FILE, _ = get_next_filename(MONITOR_DIR, "system_client", "csv")
+wait_and_lock_server()
 with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
     writer.writerow(["Request_Number", "Connect_Time(ms)", "TLS_Handshake(ms)", "Total_Time(ms)", "Elapsed_Time(ms)", 
