@@ -10,7 +10,7 @@ GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p384_mlkem768", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p256_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
@@ -318,22 +318,26 @@ def generate_graphs_from_average_per_request():
         plt.close(fig)
 
 def wait_and_lock_server():
-    print("🔁 Sync con Nginx/Flask via HTTPS (curl post-quantum)...")
+    base_url_http = "http://nginx_pq"  # URL HTTP solo per questa funzione
+    print("🔁 Sync con Nginx/Flask via HTTP (curl)...")
     while True:
         try:
-            r = subprocess.run(["curl", "-s", "-k", "--tlsv1.3", "--curves", "p384_mlkem768", f"{BASE_URL}/status"],stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True )
+            r = subprocess.run(["curl", "-s", f"{base_url_http}/status"],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
             if r.returncode != 0 or not r.stdout.strip():
                 raise Exception("Nessuna risposta")
-            try: res = json.loads(r.stdout)
+            try:
+                res = json.loads(r.stdout)
             except json.JSONDecodeError:
                 raise Exception(f"Risposta non JSON valida: {r.stdout.strip()}")
             if res.get("ready") is True:
                 print("⏳ Test in corso. Attendo riavvio server...")
             else:
-                p = subprocess.run(["curl", "-s", "-k", "--tlsv1.3", "--curves", "p384_mlkem768", "-X", "POST", f"{BASE_URL}/ready"],stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                p = subprocess.run(["curl", "-s", "-X", "POST", f"{base_url_http}/ready"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if p.returncode == 0:
-                    print("✅ Server lockato. Avvio richieste."); break
-
+                    print("✅ Server lockato. Avvio richieste.")
+                    break
         except Exception as e:
             print(f"❌ Server non pronto. Retry... ({e})")
         time.sleep(1)

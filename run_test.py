@@ -6,8 +6,8 @@ import subprocess
 import time
 import re
 import os
-sig_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"]
-kem_list = ["secp521r1", "mlkem1024","p521_mlkem1024"]
+sig_list = [ "ecdsa_p256", "mldsa44", "p256_mldsa44"]
+kem_list = ["secp256r1", "mlkem512", "p256_mlkem512"]
 
 NUM_RUNS, TIMEOUT, SLEEP = 5, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
