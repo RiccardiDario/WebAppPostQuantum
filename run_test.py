@@ -1,13 +1,11 @@
 # Configurazioni da testare
-#sig_list = [ "ecdsa_p256", "mldsa44", "p256_mldsa44", "ecdsa_p384", "mldsa65", "p384_mldsa65", "ecdsa_p521", "mldsa87", "p521_mldsa87"]
+#sig_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44", "ecdsa_p384", "mldsa65", "p384_mldsa65", "ecdsa_p521", "mldsa87", "p521_mldsa87"]
 #kem_list = ["secp256r1", "mlkem512", "p256_mlkem512", "secp384r1", "mlkem768", "p384_mlkem768", "secp521r1", "mlkem1024","p521_mlkem1024"]
 
-import subprocess
-import time
-import re
-import os
-sig_list = [ "ecdsa_p256", "mldsa44", "p256_mldsa44"]
-kem_list = ["secp256r1", "mlkem512", "p256_mlkem512"]
+import subprocess, time, re, os
+
+sig_list = ["ecdsa_p256"]
+kem_list = ["secp256r1"]
 
 NUM_RUNS, TIMEOUT, SLEEP = 5, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
@@ -60,7 +58,7 @@ def run_single_test(i):
     print(f"\n🚀 Test {i} in corso...")
 
     # Avvio container
-    code, _, err = run_subprocess(["docker-compose", "up", "--force-recreate", "-d"], timeout=30)
+    code, _, err = run_subprocess(["docker-compose", "up", "-d"], timeout=30)
     if code != 0:
         print(f"❌ Errore avvio container: {err}")
         return
@@ -78,6 +76,10 @@ def run_single_test(i):
 
     print("🛑 Arresto container...")
     run_subprocess(["docker-compose", "down"], timeout=30)
+
+    print("🧹 Rimozione volumi specifici...")
+    for volume in ["webapppostquantum_certs", "webapppostquantum_pcap", "webapppostquantum_tls_keys"]:
+        run_subprocess(["docker", "volume", "rm", "-f", volume])
 
     if i < NUM_RUNS:
         time.sleep(SLEEP)

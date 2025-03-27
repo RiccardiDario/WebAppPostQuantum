@@ -10,7 +10,7 @@ GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p256_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "secp256r1", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
@@ -359,6 +359,7 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         for i in range(NUM_REQUESTS):
             result = execute_request(i + 1)
             request_results.append(result)
+        #Decommentare per avere le richieste parallele, commentando le tre righe superiori
         #with ThreadPoolExecutor(max_workers=NUM_REQUESTS) as executor:
             #futures = [executor.submit(execute_request, i + 1) for i in range(NUM_REQUESTS)]  
             #for future in as_completed(futures): request_results.append(future.result()) 
