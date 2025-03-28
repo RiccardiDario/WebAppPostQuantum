@@ -45,6 +45,6 @@ RUN env LDFLAGS="-Wl,-R${INSTALLDIR}/lib64" ./configure --prefix="${INSTALLDIR}"
 
 FROM alpine:${ALPINE_VERSION} AS final
 ARG INSTALLDIR
-RUN apk update && apk --no-cache add python3 py3-psutil py3-pandas py3-matplotlib tshark
+RUN apk update && apk --no-cache add python3 py3-psutil py3-pandas py3-matplotlib tshark py3-numpy
 COPY --from=intermediate ${INSTALLDIR} ${INSTALLDIR}
 ENV PATH="${INSTALLDIR}/bin:${PATH}"

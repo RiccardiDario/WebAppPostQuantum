@@ -10,7 +10,7 @@ GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "secp256r1", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p521_mlkem1024", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
@@ -296,26 +296,36 @@ def generate_graphs_from_average_per_request():
             plt.grid(axis="y", linestyle="--", alpha=0.7); plt.tight_layout()
             plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_batch_{b+1}_{x[0]}_{x[-1]}.png"), dpi=300); plt.close()
 
-    # Boxplot cumulativi
+    # Boxplot segmentati ogni 3 batch
+    max_per_image = 3
     for metric, ylabel in {
         "Avg_Connect_Time(ms)": "Connect Time (ms)",
         "Avg_Handshake_Time(ms)": "Handshake Time (ms)",
         "Avg_Total_Time(ms)": "Total Time (ms)",
         "Avg_Elapsed_Time(ms)": "Elapsed Time (ms)"
     }.items():
-        fig = plt.figure(figsize=(max(6, len(batch_labels) * 1.2), 6))
-        ax = fig.add_axes([0.1, 0.15, 0.8, 0.75])
-        ax.boxplot(boxplot_data[metric], patch_artist=True, whis=2.5,
-                   boxprops=dict(facecolor='lightblue', alpha=0.7, edgecolor='black', linewidth=1.5),
-                   whiskerprops=dict(color='black', linewidth=2),
-                   capprops=dict(color='black', linewidth=2),
-                   medianprops=dict(color='red', linewidth=2),
-                   flierprops=dict(marker='o', color='black', markersize=6, alpha=0.6))
-        ax.set_title(ylabel); ax.set_ylabel(ylabel)
-        ax.set_xticks(range(1, len(batch_labels) + 1))
-        ax.set_xticklabels(batch_labels, rotation=30, ha="right")
-        plt.savefig(os.path.join(GRAPH_DIR, f"{ylabel.replace(' ', '_')}_cumulative_boxplot.png"), dpi=300)
-        plt.close(fig)
+        num_images = math.ceil(len(batch_labels) / max_per_image)
+        for img_index in range(num_images):
+            start_idx = img_index * max_per_image
+            end_idx = min((img_index + 1) * max_per_image, len(batch_labels))
+            data_subset = boxplot_data[metric][start_idx:end_idx]
+            labels_subset = batch_labels[start_idx:end_idx]
+
+            fig = plt.figure(figsize=(max(6, len(labels_subset) * 1.8), 6))
+            ax = fig.add_axes([0.1, 0.15, 0.8, 0.75])
+            ax.boxplot(data_subset, patch_artist=True, whis=2.5,
+                       boxprops=dict(facecolor='lightblue', alpha=0.7, edgecolor='black', linewidth=1.5),
+                       whiskerprops=dict(color='black', linewidth=2),
+                       capprops=dict(color='black', linewidth=2),
+                       medianprops=dict(color='red', linewidth=2),
+                       flierprops=dict(marker='o', color='black', markersize=6, alpha=0.6))
+            ax.set_title(ylabel); ax.set_ylabel(ylabel)
+            ax.set_xticks(range(1, len(labels_subset) + 1))
+            ax.set_xticklabels(labels_subset, rotation=30, ha="right")
+
+            plot_filename = f"{ylabel.replace(' ', '_')}_boxplot_part{img_index + 1}.png"
+            plt.savefig(os.path.join(GRAPH_DIR, plot_filename), dpi=300)
+            plt.close(fig)
 
 def wait_and_lock_server():
     base_url_http = "http://nginx_pq"  # URL HTTP solo per questa funzione

@@ -4,9 +4,8 @@
 
 import subprocess, time, re, os
 
-sig_list = ["ecdsa_p256"]
-kem_list = ["secp256r1"]
-
+sig_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44", "ecdsa_p384", "mldsa65", "p384_mldsa65", "ecdsa_p521", "mldsa87", "p521_mldsa87"]
+kem_list = ["secp256r1", "mlkem512", "p256_mlkem512", "secp384r1", "mlkem768", "p384_mlkem768", "secp521r1", "mlkem1024","p521_mlkem1024"]
 NUM_RUNS, TIMEOUT, SLEEP = 5, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv"
