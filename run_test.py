@@ -1,20 +1,23 @@
 # Configurazioni da testare
-#sig_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44", "ecdsa_p384", "mldsa65", "p384_mldsa65", "ecdsa_p521", "mldsa87", "p521_mldsa87"]
-#kem_list = ["secp256r1", "mlkem512", "p256_mlkem512", "secp384r1", "mlkem768", "p384_mlkem768", "secp521r1", "mlkem1024","p521_mlkem1024"]
+#sig_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44"]
+#kem_list = ["secp256r1", "mlkem512", "p256_mlkem512"]
 
+#sig_list = ["ecdsa_p384", "mldsa65", "p384_mldsa65"]
+#kem_list = ["secp384r1", "mlkem768", "p384_mlkem768"]
+
+#sig_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"]
+#kem_list = ["secp521r1", "mlkem1024","p521_mlkem1024"]
 import subprocess, time, re, os
+sig_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44"]
+kem_list = ["secp256r1", "mlkem512", "p256_mlkem512"]
 
-sig_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44", "ecdsa_p384", "mldsa65", "p384_mldsa65", "ecdsa_p521", "mldsa87", "p521_mldsa87"]
-kem_list = ["secp256r1", "mlkem512", "p256_mlkem512", "secp384r1", "mlkem768", "p384_mlkem768", "secp521r1", "mlkem1024","p521_mlkem1024"]
-NUM_RUNS, TIMEOUT, SLEEP = 5, 300, 2
+NUM_RUNS, TIMEOUT, SLEEP = 10, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv"
 SERVER_DONE = r"--- Informazioni RAM ---"
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 START_CLIENT_PATH = os.path.join(BASE_DIR, "client", "start_client.py")
 ENV_PATH = os.path.join(BASE_DIR, "cert-generator", ".env")
-
 
 def run_subprocess(command, timeout=None):
     """Esegue un comando e forza la chiusura del processo"""
@@ -36,7 +39,6 @@ def check_logs(container, pattern):
         return re.search(pattern, stdout) is not None
     return False
 
-
 def update_kem(kem):
     with open(START_CLIENT_PATH, "r", encoding="utf-8") as f:
         content = re.sub(r'("--curves",\s*")[^"]+(")', f'\\1{kem}\\2', f.read())
@@ -44,14 +46,12 @@ def update_kem(kem):
         f.write(content)
     print(f"✅ KEM aggiornato: {kem}")
 
-
 def update_sig(sig):
     with open(ENV_PATH, "r", encoding="utf-8") as f:
         lines = [f"SIGNATURE_ALGO={sig}\n" if l.startswith("SIGNATURE_ALGO=") else l for l in f]
     with open(ENV_PATH, "w", encoding="utf-8") as f:
         f.writelines(lines)
     print(f"✅ Signature aggiornata: {sig}")
-
 
 def run_single_test(i):
     print(f"\n🚀 Test {i} in corso...")
@@ -82,7 +82,6 @@ def run_single_test(i):
 
     if i < NUM_RUNS:
         time.sleep(SLEEP)
-
 
 # Esecuzione principale
 for kem, sig in zip(kem_list, sig_list):
