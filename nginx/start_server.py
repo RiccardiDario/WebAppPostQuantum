@@ -43,14 +43,14 @@ def get_kem_sig_from_logs(log_path, cert_path):
 def generate_server_performance_graphs():
     print("Generazione grafici performance server...")
     monitor_files = sorted([f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")], key=extract_monitor_server_number)
-    if len(monitor_files) < 5:
+    if len(monitor_files) < 10:
         print("Non ci sono abbastanza file per generare i grafici."); return
 
-    for i in range(0, len(monitor_files), 5):
-        batch_files = monitor_files[i:i+5]
-        if len(batch_files) < 5: print(f"Batch incompleto ({len(batch_files)} file), salto."); continue
+    for i in range(0, len(monitor_files), 10):
+        batch_files = monitor_files[i:i+10]
+        if len(batch_files) < 10: print(f"Batch incompleto ({len(batch_files)} file), salto."); continue
 
-        batch_index = i // 5 + 1
+        batch_index = i // 10 + 1
         graph_path = os.path.join(GRAPH_DIR, f"server_cpu_memory_usage_batch_{batch_index}.png")
         if os.path.exists(graph_path): print(f"Grafico già esistente per batch {batch_index}, salto."); continue
 

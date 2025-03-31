@@ -10,7 +10,7 @@ GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "secp256r1", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
@@ -256,6 +256,7 @@ def generate_graphs_from_average_per_request():
     if df.empty:
         logging.warning("Il file delle medie per richiesta è vuoto.")
         return
+
     requests_per_batch, requests_per_plot = 500, 100
     total_batches = len(df) // requests_per_batch
     batch_labels, boxplot_data = [], {k: [] for k in [
@@ -281,10 +282,12 @@ def generate_graphs_from_average_per_request():
             # Elapsed Time
             plt.figure(figsize=(10, 5))
             plt.plot(x, df_subset["Avg_Elapsed_Time(ms)"], marker='o', linestyle='-', color='blue', label="Elapsed Time (ms)")
-            plt.xlabel("Request Completion Order"); plt.ylabel("Elapsed Time (ms)")
+            plt.xlabel("Request Completion Order")
+            plt.ylabel("Elapsed Time (ms)")
             plt.title(f"Elapsed Time per Request\nKEM: {kem} | Signature: {sig}")
             plt.legend(title=f"Certificate Size: {cert_str}")
-            plt.grid(True); plt.tight_layout()
+            plt.grid(True)
+            plt.tight_layout()
             plt.savefig(os.path.join(GRAPH_DIR, f"elapsed_time_graph_batch_{b+1}_{x[0]}_{x[-1]}.png"))
             plt.close()
 
@@ -296,10 +299,12 @@ def generate_graphs_from_average_per_request():
             plt.bar(x, connect, label="Connect Time", color="red", alpha=0.7)
             plt.bar(x, handshake, bottom=connect, label="TLS Handshake Time", color="orange", alpha=0.7)
             plt.bar(x, total, bottom=df_subset["Avg_Handshake_Time(ms)"], label="Total Time", color="gray", alpha=0.7)
-            plt.xlabel("Request Completion Order"); plt.ylabel("Time (ms)")
+            plt.xlabel("Request Completion Order")
+            plt.ylabel("Time (ms)")
             plt.title(f"Timing Breakdown for TLS Connections\nKEM: {kem} | Signature: {sig}")
             plt.legend(title=f"Certificate Size: {cert_str}")
-            plt.grid(axis="y", linestyle="--", alpha=0.7); plt.tight_layout()
+            plt.grid(axis="y", linestyle="--", alpha=0.7)
+            plt.tight_layout()
             plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_batch_{b+1}_{x[0]}_{x[-1]}.png"), dpi=300)
             plt.close()
 
@@ -321,20 +326,18 @@ def generate_graphs_from_average_per_request():
             data_subset = boxplot_data[metric][start_idx:end_idx]
             labels_subset = batch_labels[start_idx:end_idx]
 
-            fig = plt.figure(figsize=(max(6, len(labels_subset) * 1.8), 6))
+            fig = plt.figure(figsize=(len(labels_subset) * 2.8, 6))  # più largo
             ax = fig.add_axes([0.1, 0.15, 0.8, 0.75])
 
-            bp = ax.boxplot(data_subset, patch_artist=True, whis=whis_val,
+            bp = ax.boxplot(data_subset, patch_artist=True, whis=whis_val, widths=0.6,
                             boxprops=dict(facecolor='lightblue', alpha=0.7, edgecolor='black', linewidth=1.5),
                             whiskerprops=dict(color='black', linewidth=2),
                             capprops=dict(color='black', linewidth=2),
                             medianprops=dict(color='red', linewidth=2),
                             flierprops=dict(marker='o', color='black', markersize=6, alpha=0.6))
 
-            # Calcolo y_max intelligente
             flat_data = [item for sublist in data_subset for item in sublist]
             if flat_data:
-                # calcolo limite percentile e max whisker
                 perc_y = np.percentile(flat_data, perc_limit)
                 box_stats = [
                     np.percentile(b, 75) + whis_val * (np.percentile(b, 75) - np.percentile(b, 25))
@@ -343,7 +346,6 @@ def generate_graphs_from_average_per_request():
                 y_max = max(perc_y, max(box_stats)) * 1.05
                 ax.set_ylim(0, y_max)
 
-                # Annotazioni outlier sopra il percentile
                 for idx, single_box in enumerate(data_subset):
                     threshold = np.percentile(single_box, perc_limit)
                     num_outliers = sum(val > threshold for val in single_box)
@@ -352,9 +354,11 @@ def generate_graphs_from_average_per_request():
                                     xy=(idx + 1, y_max * 0.95),
                                     ha='center', fontsize=8, color='gray')
 
-            ax.set_title(ylabel); ax.set_ylabel(ylabel)
+            ax.set_title(ylabel)
+            ax.set_ylabel(ylabel)
             ax.set_xticks(range(1, len(labels_subset) + 1))
             ax.set_xticklabels(labels_subset, rotation=30, ha="right")
+            ax.set_xlim(0.5, len(labels_subset) + 0.5)
 
             plot_filename = f"{ylabel.replace(' ', '_')}_boxplot_part{img_index + 1}.png"
             plt.savefig(os.path.join(GRAPH_DIR, plot_filename), dpi=300)
