@@ -10,7 +10,7 @@ GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p256_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
@@ -308,7 +308,7 @@ def generate_graphs_from_average_per_request():
             plt.savefig(os.path.join(GRAPH_DIR, f"tls_avg_graph_batch_{b+1}_{x[0]}_{x[-1]}.png"), dpi=300)
             plt.close()
 
-    # Boxplot segmentati ogni 3 batch
+        # Boxplot segmentati ogni 3 batch
     max_per_image = 3
     whis_val = 4.0
     perc_limit = 99
@@ -326,16 +326,18 @@ def generate_graphs_from_average_per_request():
             data_subset = boxplot_data[metric][start_idx:end_idx]
             labels_subset = batch_labels[start_idx:end_idx]
 
-            fig = plt.figure(figsize=(len(labels_subset) * 2.8, 6))  # più largo
+            fig = plt.figure(figsize=(max(6, len(labels_subset) * 1.8), 6))
             ax = fig.add_axes([0.1, 0.15, 0.8, 0.75])
 
-            bp = ax.boxplot(data_subset, patch_artist=True, whis=whis_val, widths=0.6,
+            # widths non impostato: torna al default
+            bp = ax.boxplot(data_subset, patch_artist=True, whis=whis_val,
                             boxprops=dict(facecolor='lightblue', alpha=0.7, edgecolor='black', linewidth=1.5),
                             whiskerprops=dict(color='black', linewidth=2),
                             capprops=dict(color='black', linewidth=2),
                             medianprops=dict(color='red', linewidth=2),
                             flierprops=dict(marker='o', color='black', markersize=6, alpha=0.6))
 
+            # Espansione verticale intelligente
             flat_data = [item for sublist in data_subset for item in sublist]
             if flat_data:
                 perc_y = np.percentile(flat_data, perc_limit)
@@ -343,15 +345,18 @@ def generate_graphs_from_average_per_request():
                     np.percentile(b, 75) + whis_val * (np.percentile(b, 75) - np.percentile(b, 25))
                     for b in data_subset
                 ]
-                y_max = max(perc_y, max(box_stats)) * 1.05
-                ax.set_ylim(0, y_max)
+                y_max = max(perc_y, max(box_stats))
+                y_min = min(min(b) for b in data_subset)
+                y_margin = (y_max - y_min) * 0.2  # espande sopra e sotto del 20%
+                ax.set_ylim(max(0, y_min - y_margin), y_max + y_margin)
 
+                # Annotazioni outlier
                 for idx, single_box in enumerate(data_subset):
                     threshold = np.percentile(single_box, perc_limit)
                     num_outliers = sum(val > threshold for val in single_box)
                     if num_outliers > 0:
                         ax.annotate(f"+{num_outliers} outlier",
-                                    xy=(idx + 1, y_max * 0.95),
+                                    xy=(idx + 1, y_max + y_margin * 0.1),
                                     ha='center', fontsize=8, color='gray')
 
             ax.set_title(ylabel)
