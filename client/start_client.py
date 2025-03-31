@@ -1,4 +1,4 @@
-import json, os, re, math, time, logging, subprocess, csv, psutil, pandas as pd, matplotlib.pyplot as plt
+import json, os, re, math, time, logging, subprocess, csv, psutil, pandas as pd, matplotlib.pyplot as plt, numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread, Lock
 from datetime import datetime
@@ -10,7 +10,7 @@ GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p521_mlkem1024", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "secp256r1", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
@@ -73,12 +73,12 @@ def generate_system_monitor_graph():
     logging.info("Generazione grafico risorse sistema per l'ultimo batch...")
     monitor_files = sorted([f for f in os.listdir(MONITOR_DIR) if f.startswith("system_client") and f.endswith(".csv")], key=extract_monitor_number)
     request_files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")], key=extract_request_number)
-    if len(monitor_files) < 5 or len(request_files) % 5 != 0:
+    if len(monitor_files) < 10 or len(request_files) % 10 != 0:
         logging.info("Nessun batch completo di file di monitoraggio da processare.")
         return
 
-    monitor_batch_files = monitor_files[-5:]
-    batch_paths = [os.path.join(OUTPUT_DIR, f) for f in request_files[-5:]]
+    monitor_batch_files = monitor_files[-10:]
+    batch_paths = [os.path.join(OUTPUT_DIR, f) for f in request_files[-10:]]
     kem, sig_alg, _ = get_kem_sig_from_csv(batch_paths)
 
     monitor_dataframes = [pd.read_csv(os.path.join(MONITOR_DIR, f)) for f in monitor_batch_files]
@@ -225,8 +225,8 @@ def update_average_report(request_results):
 def append_last_batch_to_average_per_request():
     per_request_avg_file = os.path.join(AVG_DIR, "average_metrics_per_request.csv")
     files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("request_client") and f.endswith(".csv")], key=extract_request_number)
-    if len(files) < 5 or len(files) % 5 != 0:
-        logging.info("Il batch non è completo o non divisibile per 5.")
+    if len(files) < 10 or len(files) % 10 != 0:
+        logging.info("Il batch non è completo o non divisibile per 10.")
         return
 
     batch_paths = [os.path.join(OUTPUT_DIR, f) for f in files[-5:]]
