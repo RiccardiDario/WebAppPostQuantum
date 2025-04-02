@@ -40,6 +40,10 @@ def get_kem_sig_from_logs(log_path, cert_path):
         print(f"Errore firma certificato: {e}")
     return kem, sig_alg
 
+def append_kem_sig_to_csv(f, kem, sig):
+    try: pd.read_csv(f).assign(KEM=kem, Signature=sig).to_csv(f, index=False)
+    except Exception as e: print(f"❌ Errore su {f}: {e}")
+
 def generate_server_performance_graphs():
     print("Generazione grafici performance server...")
     monitor_files = sorted([f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")], key=extract_monitor_server_number)
@@ -151,7 +155,9 @@ if __name__ == "__main__":
         monitor_resources()
         analyze_performance()
         generate_avg_resource_usage()
-        generate_server_performance_graphs()
+        kem, sig = get_kem_sig_from_logs(ACCESS_LOG, "/etc/nginx/certs/qsc-ca-chain.crt")
+        for f in [RESOURCE_LOG, OUTPUT_FILE, AVG_METRICS_FILE]: append_kem_sig_to_csv(f, kem, sig)
+        #generate_server_performance_graphs()
         log_system_info()
     except Exception as e:
         print(f"ERRORE GENERALE: {e}")
