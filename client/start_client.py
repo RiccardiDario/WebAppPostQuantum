@@ -10,7 +10,7 @@ GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR = f"{OUTPUT_DIR}/graphs/", f"{MONITOR_DIR}/
 for d in [GRAPH_DIR, SYSTEM_GRAPH_DIR, AVG_DIR]: os.makedirs(d, exist_ok=True)
 NUM_REQUESTS, active_requests, active_requests_lock, global_stats = 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
-CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "p256_mlkem512", "--cacert", "/opt/certs/CA.crt", "-w",
+CURL_COMMAND_TEMPLATE = ["curl", "--tlsv1.3", "--curves", "secp521r1", "--cacert", "/opt/certs/CA.crt", "-w",
 "Connect Time: %{time_connect}, TLS Handshake: %{time_appconnect}, Total Time: %{time_total}, %{http_code}\n","-s", BASE_URL]
 
 def get_next_filename(base_path, base_name, extension):
@@ -418,7 +418,10 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
     finally:
         monitor_thread.join()
         end_time = time.time()
-
+    
+    kem_used  = next((r[8] for r in request_results if r[8] != "Unknown"), "Unknown")
+    sig_used = next((r[9] for r in request_results if r[9] != "Unknown"), "Unknown")
+    pd.read_csv(MONITOR_FILE).assign(KEM=kem_used, Signature=sig_used).to_csv(MONITOR_FILE, index=False)
     success_count = 0
     for result in request_results:
         request_number = result[0]
@@ -426,7 +429,7 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         writer.writerow(result[:6] + [f"{success_count}/{NUM_REQUESTS}"] + result[6:])
 
 update_average_report(request_results)
-append_last_batch_to_average_per_request()
-generate_system_monitor_graph()
-generate_graphs_from_average_per_request()
+#append_last_batch_to_average_per_request()
+#generate_system_monitor_graph()
+#generate_graphs_from_average_per_request()
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
