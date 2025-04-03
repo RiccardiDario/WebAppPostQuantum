@@ -16,6 +16,8 @@ services:
     container_name: flask_app
     ports:
       - "5000:5000"
+    volumes:
+      - ./shared_plan:/shared_plan
     networks:
       - custom_network
 

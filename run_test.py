@@ -2,7 +2,7 @@
 #sig_list, kem_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44"], ["secp256r1", "mlkem512", "p256_mlkem512"]
 #sig_list, kem_list= ["ecdsa_p384", "mldsa65", "p384_mldsa65"], ["secp384r1", "mlkem768", "p384_mlkem768"]
 #sig_list, kem_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"], ["secp521r1", "mlkem1024","p521_mlkem1024"]
-import subprocess, psutil, time, math, re, logging, os, random, csv, pandas as pd, numpy as np, matplotlib.pyplot as plt
+import json, subprocess, psutil, time, math, re, logging, os, random, csv, pandas as pd, numpy as np, matplotlib.pyplot as plt
 from collections import defaultdict
 
 sig_list, kem_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"], ["secp521r1", "mlkem1024", "p521_mlkem1024"]
@@ -11,11 +11,12 @@ CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE, SERVER_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv", r"--- Informazioni RAM ---"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-START_CLIENT_PATH, ENV_PATH = os.path.join(BASE_DIR, "client/start_client.py"), os.path.join(BASE_DIR, "cert-generator/.env")
+START_CLIENT_PATH, ENV_PATH, SHARED_VOLUMED_PATH = os.path.join(BASE_DIR, "client/start_client.py"), os.path.join(BASE_DIR, "cert-generator/.env"), os.path.join(BASE_DIR, "shared_plan")
 output_csv = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics_per_request.csv")
 GRAPH_DIR, FILTERED_LOG_DIR = os.path.join(BASE_DIR, "report/graph"), os.path.join(BASE_DIR, "report/filtered_logs")
 input_folder, monitor_folder = os.path.join(BASE_DIR, "report/request_logs"), os.path.join(BASE_DIR, "report/system_logs")
-for d in (GRAPH_DIR, FILTERED_LOG_DIR, input_folder, monitor_folder): os.makedirs(d, exist_ok=True)
+for d in (GRAPH_DIR, FILTERED_LOG_DIR, input_folder, monitor_folder, SHARED_VOLUMED_PATH): os.makedirs(d, exist_ok=True)
+plan_path = os.path.join(SHARED_VOLUMED_PATH, "plan.json")
 
 def get_kem_sig_from_file(filepath):
     try:
@@ -284,6 +285,9 @@ def generate_system_monitor_graph():
 def run_all_tests_randomized():
     plan = [(i, j) for i in range(len(kem_list)) for j in range(1, NUM_RUNS + 1)]
     random.shuffle(plan)
+    with open(plan_path, "w", encoding="utf-8") as f:
+        json.dump(plan, f)
+    print(f"📤 Piano test salvato in {plan_path}")
     last_kem, last_sig = None, None
     for scenario_idx, replica in plan:
         kem, sig = kem_list[scenario_idx], sig_list[scenario_idx]
