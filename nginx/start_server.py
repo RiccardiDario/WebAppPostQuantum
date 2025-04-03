@@ -9,8 +9,8 @@ def ensure_dirs(*dirs):
     for d in dirs: os.makedirs(d, exist_ok=True)
 
 OUTPUT_DIR = "/opt/nginx/output"
-RESOURCE_LOG_DIR, FILTERED_LOG_DIR, GRAPH_DIR = f"{OUTPUT_DIR}/resource_logs", f"{OUTPUT_DIR}/filtered_logs", f"{OUTPUT_DIR}/filtered_logs/graphs"
-ensure_dirs(RESOURCE_LOG_DIR, FILTERED_LOG_DIR, GRAPH_DIR)
+RESOURCE_LOG_DIR, FILTERED_LOG_DIR = f"{OUTPUT_DIR}/resource_logs", f"{OUTPUT_DIR}/filtered_logs"
+ensure_dirs(RESOURCE_LOG_DIR, FILTERED_LOG_DIR)
 
 RESOURCE_LOG, OUTPUT_FILE = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx", "csv"), get_next_filename(FILTERED_LOG_DIR, "monitor_nginx_filtered", "csv")
 ACCESS_LOG, EXPECTED_REQUESTS, SAMPLING_INTERVAL = "/opt/nginx/logs/access_custom.log", 500, 0.1

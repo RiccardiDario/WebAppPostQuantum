@@ -7,7 +7,7 @@
 
 #sig_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"]
 #kem_list = ["secp521r1", "mlkem1024","p521_mlkem1024"]
-import subprocess, psutil, time, math, re, os, random, csv, pandas as pd, numpy as np, matplotlib.pyplot as plt
+import subprocess, psutil, time, math, re, logging, os, random, csv, pandas as pd, numpy as np, matplotlib.pyplot as plt
 from collections import defaultdict
 
 sig_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"]
@@ -23,8 +23,12 @@ output_csv = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics_per
 GRAPH_DIR = os.path.join(BASE_DIR, "report/graph")
 FILTERED_LOG_DIR= os.path.join(BASE_DIR, "report/filtered_logs")
 input_folder = os.path.join(BASE_DIR, "report", "request_logs")
+monitor_folder = os.path.join(BASE_DIR, "report", "system_logs")
 os.makedirs(GRAPH_DIR, exist_ok=True)
 os.makedirs(FILTERED_LOG_DIR, exist_ok=True)
+os.makedirs(GRAPH_DIR, exist_ok=True)
+os.makedirs(input_folder, exist_ok=True)
+os.makedirs(monitor_folder, exist_ok=True)
 
 def get_kem_sig_from_file(filepath):
     try:
@@ -317,9 +321,6 @@ def get_kem_sig_from_monitor_file(filepath):
 
 def generate_system_monitor_graph():
     monitor_folder = os.path.join(BASE_DIR, "report", "system_logs")
-    output_folder = os.path.join(input_folder, "graphs")
-    os.makedirs(output_folder, exist_ok=True)
-
     monitor_files = [
         os.path.join(monitor_folder, f) for f in os.listdir(monitor_folder)
         if f.startswith("system_client") and f.endswith(".csv")
@@ -374,7 +375,7 @@ def generate_system_monitor_graph():
         plt.tight_layout()
 
         filename = f"resource_usage_{kem}_{sig}".replace("/", "_").replace("\n", "_").strip() + ".png"
-        plt.savefig(os.path.join(output_folder, filename), dpi=300)
+        plt.savefig(os.path.join(GRAPH_DIR, filename), dpi=300)
         plt.close()
         print(f"✅ Grafico salvato: {filename}")
 
@@ -391,7 +392,7 @@ def run_all_tests_randomized():
     print("\n🎉 Tutti i test completati!")
 
 if __name__ == "__main__":
-    #run_all_tests_randomized()
+    run_all_tests_randomized()
     print(f"\n📊 Generazione medie e grafici per tutti i batch completati...")
     process_all_batches_for_avg_per_request(input_folder, output_csv)
     generate_graphs_from_average_per_request()
