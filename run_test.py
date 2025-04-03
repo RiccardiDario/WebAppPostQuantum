@@ -17,13 +17,14 @@ CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv"
 SERVER_DONE = r"--- Informazioni RAM ---"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-START_CLIENT_PATH = os.path.join(BASE_DIR, "client", "start_client.py")
-ENV_PATH = os.path.join(BASE_DIR, "cert-generator", ".env")
+START_CLIENT_PATH = os.path.join(BASE_DIR, "client/start_client.py")
+ENV_PATH = os.path.join(BASE_DIR, "cert-generator/.env")
+output_csv = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics_per_request.csv")
+GRAPH_DIR = os.path.join(BASE_DIR, "report/graph")
+FILTERED_LOG_DIR= os.path.join(BASE_DIR, "report/filtered_logs")
 input_folder = os.path.join(BASE_DIR, "report", "request_logs")
-output_csv = os.path.join(input_folder, "avg", "average_metrics_per_request.csv")
-GRAPH_DIR = os.path.join(input_folder, "graphs")
 os.makedirs(GRAPH_DIR, exist_ok=True)
-
+os.makedirs(FILTERED_LOG_DIR, exist_ok=True)
 
 def get_kem_sig_from_file(filepath):
     try:
@@ -246,6 +247,74 @@ def generate_graphs_from_average_per_request():
             plt.savefig(os.path.join(GRAPH_DIR, plot_filename), dpi=300)
             plt.close(fig)
 
+def generate_server_performance_graphs():
+    print("📈 Generazione grafici performance server per ogni coppia KEM/Signature...")
+    
+    # Raggruppamento per (KEM, Signature)
+    grouped_files = defaultdict(list)
+    for file in os.listdir(FILTERED_LOG_DIR):
+        if file.startswith("monitor_nginx_filtered") and file.endswith(".csv"):
+            full_path = os.path.join(FILTERED_LOG_DIR, file)
+            kem, sig = get_kem_sig_from_monitor_file(full_path)
+            if kem != "Unknown" and sig != "Unknown":
+                grouped_files[(kem, sig)].append(full_path)
+
+    for (kem, sig), file_list in grouped_files.items():
+        if len(file_list) < 3:
+            print(f"⏭️ Salto {kem} + {sig} (solo {len(file_list)} file)")
+            continue
+
+        output_path = os.path.join(GRAPH_DIR, f"server_cpu_memory_usage_{kem}_{sig}.png".replace("/", "_"))
+        if os.path.exists(output_path):
+            print(f"📁 Già esistente: {output_path}, salto.")
+            continue
+
+        dfs = []
+        for f in file_list[:3]:
+            try:
+                df = pd.read_csv(f)
+                df["Timestamp"] = pd.to_datetime(df["Timestamp"], format="%d/%b/%Y:%H:%M:%S.%f")
+                dfs.append(df)
+            except Exception as e:
+                print(f"⚠️ Errore nel parsing di {f}: {e}")
+
+        if len(dfs) < 3:
+            print(f"⚠️ File validi insufficienti per {kem} + {sig}, salto.")
+            continue
+
+        # Trova intervallo minimo per allineare i dataframe
+        min_range = min((df["Timestamp"].max() - df["Timestamp"].min()).total_seconds() for df in dfs)
+
+        df_monitor_avg = pd.concat([
+            df[df["Timestamp"] <= df["Timestamp"].min() + pd.Timedelta(seconds=min_range)]
+            .assign(Index=(df["Timestamp"] - df["Timestamp"].min()).dt.total_seconds() // 0.1)
+            .groupby("Index")[["CPU (%)", "Mem (%)"]].mean().reset_index()
+            for df in dfs
+        ]).groupby("Index")[["CPU (%)", "Mem (%)"]].mean().reset_index()
+
+        time_ms = df_monitor_avg["Index"] * 100
+
+        fig, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(time_ms, df_monitor_avg["CPU (%)"], label="CPU Usage (%)", color="red", marker="o")
+        ax.plot(time_ms, df_monitor_avg["Mem (%)"], label="Memory Usage (%)", color="blue", marker="o")
+        ax.set(xlabel="Time (ms)", ylabel="Usage (%)",
+               title=f"Server Resource Usage Over Time\nKEM: {kem} | Signature: {sig}")
+        ax.legend(title=f"KEM: {kem} | Signature: {sig}", loc="upper left", bbox_to_anchor=(1, 1))
+        ax.grid(True, linestyle="--", alpha=0.7)
+        fig.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        print(f"✅ Grafico generato: {output_path}")
+
+def get_kem_sig_from_monitor_file(filepath):
+    try:
+        df = pd.read_csv(filepath)
+        kem = df["KEM"].dropna().iloc[0]
+        sig = df["Signature"].dropna().iloc[0]
+        return kem.strip(), sig.strip()
+    except Exception as e:
+        print(f"Errore durante l'estrazione di KEM/SIG dal file di monitoraggio {filepath}: {e}")
+        return "Unknown", "Unknown"
+
 def generate_system_monitor_graph():
     monitor_folder = os.path.join(BASE_DIR, "report", "system_logs")
     output_folder = os.path.join(input_folder, "graphs")
@@ -322,9 +391,9 @@ def run_all_tests_randomized():
     print("\n🎉 Tutti i test completati!")
 
 if __name__ == "__main__":
-    run_all_tests_randomized()
+    #run_all_tests_randomized()
     print(f"\n📊 Generazione medie e grafici per tutti i batch completati...")
     process_all_batches_for_avg_per_request(input_folder, output_csv)
     generate_graphs_from_average_per_request()
     generate_system_monitor_graph()
-
+    generate_server_performance_graphs()

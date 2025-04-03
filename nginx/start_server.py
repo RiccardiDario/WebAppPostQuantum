@@ -1,4 +1,4 @@
-import subprocess, re, psutil, csv, time, os, pandas as pd, matplotlib.pyplot as plt
+import subprocess, re, psutil, csv, time, os, pandas as pd
 from datetime import datetime
 
 def get_next_filename(path, name, ext, counter=1):
@@ -41,47 +41,13 @@ def get_kem_sig_from_logs(log_path, cert_path):
     return kem, sig_alg
 
 def append_kem_sig_to_csv(f, kem, sig):
-    try: pd.read_csv(f).assign(KEM=kem, Signature=sig).to_csv(f, index=False)
-    except Exception as e: print(f"❌ Errore su {f}: {e}")
-
-def generate_server_performance_graphs():
-    print("Generazione grafici performance server...")
-    monitor_files = sorted([f for f in os.listdir(FILTERED_LOG_DIR) if f.startswith("monitor_nginx_filtered") and f.endswith(".csv")], key=extract_monitor_server_number)
-    if len(monitor_files) < 10:
-        print("Non ci sono abbastanza file per generare i grafici."); return
-
-    for i in range(0, len(monitor_files), 10):
-        batch_files = monitor_files[i:i+10]
-        if len(batch_files) < 10: print(f"Batch incompleto ({len(batch_files)} file), salto."); continue
-
-        batch_index = i // 10 + 1
-        graph_path = os.path.join(GRAPH_DIR, f"server_cpu_memory_usage_batch_{batch_index}.png")
-        if os.path.exists(graph_path): print(f"Grafico già esistente per batch {batch_index}, salto."); continue
-
-        kem, sig = get_kem_sig_from_logs(ACCESS_LOG, "/etc/nginx/certs/qsc-ca-chain.crt")
-        dfs = [pd.read_csv(os.path.join(FILTERED_LOG_DIR, f)) for f in batch_files]
-        for df in dfs: df["Timestamp"] = pd.to_datetime(df["Timestamp"], format="%d/%b/%Y:%H:%M:%S.%f")
-
-        min_range = min((df["Timestamp"].max() - df["Timestamp"].min()).total_seconds() for df in dfs)
-
-        df_monitor_avg = pd.concat([
-            df[df["Timestamp"] <= df["Timestamp"].min() + pd.Timedelta(seconds=min_range)]
-            .assign(Index=(df["Timestamp"] - df["Timestamp"].min()).dt.total_seconds() // 0.1)
-            .groupby("Index").mean(numeric_only=True).reset_index()
-            for df in dfs
-        ]).groupby("Index").mean(numeric_only=True).reset_index()
-
-        time_ms = df_monitor_avg["Index"] * 100
-
-        fig, ax = plt.subplots(figsize=(14, 7))
-        ax.plot(time_ms, df_monitor_avg["CPU (%)"], label="CPU Usage (%)", color="red", marker="o")
-        ax.plot(time_ms, df_monitor_avg["Mem (%)"], label="Memory Usage (%)", color="blue", marker="o")
-        ax.set(xlabel="Time (ms)", ylabel="Usage (%)",
-               title=f"Server Resource Usage (Avg. CPU & Memory) Over Time\nKEM: {kem} | Signature: {sig}")
-        ax.legend(title=f"KEM: {kem} | Signature: {sig}", loc="upper left", bbox_to_anchor=(1, 1))
-        ax.grid(True, linestyle="--", alpha=0.7)
-        fig.savefig(graph_path, dpi=300, bbox_inches="tight"); plt.close(fig)
-        print(f"✅ Grafico generato: {graph_path}")
+    try:
+        df = pd.read_csv(f)
+        df.loc[df.index[-1], "KEM"] = kem
+        df.loc[df.index[-1], "Signature"] = sig
+        df.to_csv(f, index=False)
+    except Exception as e:
+        print(f"❌ Errore su {f}: {e}")
 
 def monitor_resources():
     print("Inizio monitoraggio delle risorse...")
@@ -157,7 +123,6 @@ if __name__ == "__main__":
         generate_avg_resource_usage()
         kem, sig = get_kem_sig_from_logs(ACCESS_LOG, "/etc/nginx/certs/qsc-ca-chain.crt")
         for f in [RESOURCE_LOG, OUTPUT_FILE, AVG_METRICS_FILE]: append_kem_sig_to_csv(f, kem, sig)
-        #generate_server_performance_graphs()
         log_system_info()
     except Exception as e:
         print(f"ERRORE GENERALE: {e}")
