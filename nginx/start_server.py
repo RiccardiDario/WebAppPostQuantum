@@ -5,16 +5,12 @@ def get_next_filename(path, name, ext, counter=1):
     while os.path.exists(f"{path}/{name}{counter}.{ext}"): counter += 1
     return f"{path}/{name}{counter}.{ext}"
 
-def ensure_dirs(*dirs):
-    for d in dirs: os.makedirs(d, exist_ok=True)
-
-OUTPUT_DIR = "/opt/nginx/output"
-RESOURCE_LOG_DIR, FILTERED_LOG_DIR = f"{OUTPUT_DIR}/resource_logs", f"{OUTPUT_DIR}/filtered_logs"
-ensure_dirs(RESOURCE_LOG_DIR, FILTERED_LOG_DIR)
+RESOURCE_LOG_DIR, FILTERED_LOG_DIR = "/opt/nginx/output/resource_logs", "/opt/nginx/output/filtered_logs"
+for d in (RESOURCE_LOG_DIR, FILTERED_LOG_DIR): os.makedirs(d, exist_ok=True)
 
 RESOURCE_LOG, OUTPUT_FILE = get_next_filename(RESOURCE_LOG_DIR, "monitor_nginx", "csv"), get_next_filename(FILTERED_LOG_DIR, "monitor_nginx_filtered", "csv")
-ACCESS_LOG, EXPECTED_REQUESTS, SAMPLING_INTERVAL = "/opt/nginx/logs/access_custom.log", 500, 0.1
-AVG_METRICS_FILE = f"{FILTERED_LOG_DIR}/avg_nginx_usage.csv"
+ACCESS_LOG, AVG_METRICS_FILE = "/opt/nginx/logs/access_custom.log",f"{FILTERED_LOG_DIR}/avg_nginx_usage.csv"
+EXPECTED_REQUESTS, SAMPLING_INTERVAL = 500, 0.1
 
 def get_kem_sig_from_logs(log_path, cert_path):
     kem_map = { "0x0200": "mlkem512", "0x0201": "mlkem768", "0x0202": "mlkem1024", "0x2f4b": "p256_mlkem512", "0x2f4c": "p384_mlkem768", "0x2f4d": "p521_mlkem1024" }
@@ -43,8 +39,9 @@ def get_kem_sig_from_logs(log_path, cert_path):
 def append_kem_sig_to_csv(f, kem, sig):
     try:
         df = pd.read_csv(f)
-        df.loc[df.index[-1], "KEM"] = kem
-        df.loc[df.index[-1], "Signature"] = sig
+        df["KEM"] = df.get("KEM", ""); df["Signature"] = df.get("Signature", "")
+        if "avg_nginx_usage" in f: df.loc[df.index[-1], ["KEM", "Signature"]] = kem, sig
+        else: df[["KEM", "Signature"]] = kem, sig
         df.to_csv(f, index=False)
     except Exception as e:
         print(f"❌ Errore su {f}: {e}")
@@ -94,12 +91,10 @@ def generate_avg_resource_usage():
         if not data: return print("ERRORE: Nessun dato disponibile per calcolare la media.")
         avg_cpu = sum(float(r["CPU (%)"]) for r in data) / len(data)
         avg_ram = sum(float(r["Mem (%)"]) for r in data) / len(data)
-
         file_exists = os.path.isfile(AVG_METRICS_FILE)
         with open(AVG_METRICS_FILE, "a", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            if not file_exists:
-                w.writerow(["Timestamp", "CPU Media (%)", "Mem Media (%)"])
+            if not file_exists: w.writerow(["Timestamp", "CPU Media (%)", "Mem Media (%)"])
             w.writerow([datetime.now().strftime("%d/%b/%Y:%H:%M:%S"), f"{avg_cpu:.2f}", f"{avg_ram:.2f}"])
         print(f"Medie CPU e RAM aggiornate in {AVG_METRICS_FILE}.")
     except Exception as e:
@@ -113,8 +108,6 @@ def log_system_info():
     print(f"Core fisici disponibili: {psutil.cpu_count(logical=False)}")
     print(f"\n--- Informazioni RAM ---")
     print(f"RAM totale: {ram_info.total / (1024**3):.2f} GB")
-
-def extract_monitor_server_number(filename): return int(m.group(1)) if (m := re.search(r"monitor_nginx_filtered(\d+)", filename)) else -1
 
 if __name__ == "__main__":
     try:
