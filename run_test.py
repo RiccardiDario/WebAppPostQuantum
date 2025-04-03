@@ -1,42 +1,27 @@
 # Configurazioni da testare
-#sig_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44"]
-#kem_list = ["secp256r1", "mlkem512", "p256_mlkem512"]
-
-#sig_list = ["ecdsa_p384", "mldsa65", "p384_mldsa65"]
-#kem_list = ["secp384r1", "mlkem768", "p384_mlkem768"]
-
-#sig_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"]
-#kem_list = ["secp521r1", "mlkem1024","p521_mlkem1024"]
+#sig_list, kem_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44"], ["secp256r1", "mlkem512", "p256_mlkem512"]
+#sig_list, kem_list= ["ecdsa_p384", "mldsa65", "p384_mldsa65"], ["secp384r1", "mlkem768", "p384_mlkem768"]
+#sig_list, kem_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"], ["secp521r1", "mlkem1024","p521_mlkem1024"]
 import subprocess, psutil, time, math, re, logging, os, random, csv, pandas as pd, numpy as np, matplotlib.pyplot as plt
 from collections import defaultdict
 
-sig_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"]
-kem_list = ["secp521r1", "mlkem1024", "p521_mlkem1024"]
+sig_list, kem_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"], ["secp521r1", "mlkem1024", "p521_mlkem1024"]
 NUM_RUNS, TIMEOUT, SLEEP = 3, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
-CLIENT_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv"
-SERVER_DONE = r"--- Informazioni RAM ---"
+CLIENT_DONE, SERVER_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv", r"--- Informazioni RAM ---"
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-START_CLIENT_PATH = os.path.join(BASE_DIR, "client/start_client.py")
-ENV_PATH = os.path.join(BASE_DIR, "cert-generator/.env")
+START_CLIENT_PATH, ENV_PATH = os.path.join(BASE_DIR, "client/start_client.py"), os.path.join(BASE_DIR, "cert-generator/.env")
 output_csv = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics_per_request.csv")
-GRAPH_DIR = os.path.join(BASE_DIR, "report/graph")
-FILTERED_LOG_DIR= os.path.join(BASE_DIR, "report/filtered_logs")
-input_folder = os.path.join(BASE_DIR, "report", "request_logs")
-monitor_folder = os.path.join(BASE_DIR, "report", "system_logs")
-os.makedirs(GRAPH_DIR, exist_ok=True)
-os.makedirs(FILTERED_LOG_DIR, exist_ok=True)
-os.makedirs(GRAPH_DIR, exist_ok=True)
-os.makedirs(input_folder, exist_ok=True)
-os.makedirs(monitor_folder, exist_ok=True)
+GRAPH_DIR, FILTERED_LOG_DIR = os.path.join(BASE_DIR, "report/graph"), os.path.join(BASE_DIR, "report/filtered_logs")
+input_folder, monitor_folder = os.path.join(BASE_DIR, "report/request_logs"), os.path.join(BASE_DIR, "report/system_logs")
+for d in (GRAPH_DIR, FILTERED_LOG_DIR, input_folder, monitor_folder): os.makedirs(d, exist_ok=True)
 
 def get_kem_sig_from_file(filepath):
     try:
         df = pd.read_csv(filepath)
         df = df[df["Status"] == "Success"]
-        kem = df["KEM"].dropna().mode()[0]
-        sig = df["Signature"].dropna().mode()[0]
-        return kem.strip(), sig.strip()
+        return df["KEM"].dropna().mode()[0].strip(), df["Signature"].dropna().mode()[0].strip()
     except Exception as e:
         print(f"Errore durante l'estrazione di KEM/SIG da {filepath}: {e}")
         return "Unknown", "Unknown"
@@ -47,10 +32,7 @@ def group_request_files_by_kem_sig(folder):
         if file.startswith("request_client") and file.endswith(".csv"):
             path = os.path.join(folder, file)
             kem, sig = get_kem_sig_from_file(path)
-            if kem != "Unknown" and sig != "Unknown":
-                grouped[(kem, sig)].append(path)
-
-    # Mantieni solo i gruppi con almeno 10 file
+            if kem != "Unknown" and sig != "Unknown": grouped[(kem, sig)].append(path)
     return {k: v for k, v in grouped.items() if len(v) >= 3}
 
 def generate_average_metrics_per_request(kem, sig, files, output_csv):
@@ -94,15 +76,13 @@ def check_logs(container, pattern):
 def update_kem(kem):
     with open(START_CLIENT_PATH, "r", encoding="utf-8") as f:
         content = re.sub(r'("--curves",\s*")[^"]+(")', f'\\1{kem}\\2', f.read())
-    with open(START_CLIENT_PATH, "w", encoding="utf-8") as f:
-        f.write(content)
+    with open(START_CLIENT_PATH, "w", encoding="utf-8") as f: f.write(content)
     print(f"✅ KEM: {kem}")
 
 def update_sig(sig):
     with open(ENV_PATH, "r", encoding="utf-8") as f:
         lines = [f"SIGNATURE_ALGO={sig}\n" if l.startswith("SIGNATURE_ALGO=") else l for l in f]
-    with open(ENV_PATH, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+    with open(ENV_PATH, "w", encoding="utf-8") as f: f.writelines(lines)
     print(f"✅ Signature: {sig}")
 
 def run_single_test(i):
@@ -125,8 +105,7 @@ def run_single_test(i):
     print("🧹 Cleanup volumi...")
     for v in ["webapppostquantum_certs", "webapppostquantum_pcap", "webapppostquantum_tls_keys"]:
         run_subprocess(["docker", "volume", "rm", "-f", v])
-    if i < NUM_RUNS:
-        time.sleep(SLEEP)
+    if i < NUM_RUNS: time.sleep(SLEEP)
 
 def generate_graphs_from_average_per_request():
     file_path = output_csv
