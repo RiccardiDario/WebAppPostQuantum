@@ -13,6 +13,7 @@ CLIENT_DONE, SERVER_DONE = r"\[INFO\] Test completato in .* Report: /app/output/
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 START_CLIENT_PATH, ENV_PATH, SHARED_VOLUMED_PATH = os.path.join(BASE_DIR, "client/start_client.py"), os.path.join(BASE_DIR, "cert-generator/.env"), os.path.join(BASE_DIR, "shared_plan")
 output_csv = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics_per_request.csv")
+output_csv_avg = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics.csv")
 GRAPH_DIR, FILTERED_LOG_DIR = os.path.join(BASE_DIR, "report/graph"), os.path.join(BASE_DIR, "report/filtered_logs")
 input_folder, monitor_folder = os.path.join(BASE_DIR, "report/request_logs"), os.path.join(BASE_DIR, "report/system_logs")
 for d in (GRAPH_DIR, FILTERED_LOG_DIR, input_folder, monitor_folder, SHARED_VOLUMED_PATH): os.makedirs(d, exist_ok=True)
@@ -300,22 +301,25 @@ def run_all_tests_randomized():
 def classify_algorithms_and_update_csv(csv_path):
     if not os.path.exists(csv_path): return
     df = pd.read_csv(csv_path)
-    pq_kem = {"mlkem512", "mlkem768", "mlkem1024"}
-    pq_sig = {"mldsa44", "mldsa65", "mldsa87"}
-    pre_kem = {"secp256r1", "secp384r1", "secp521r1"}
-    pre_sig = {"ecdsa_p256", "ecdsa_p384", "ecdsa_p521"}
+    if "algorithms" in df.columns: df.drop(columns="algorithms", inplace=True)
     df["algorithms"] = df.apply(lambda r: (
-        "Post-Quantum" if r["KEM"].lower() in pq_kem and r["Signature"].lower() in pq_sig else
-        "Pre-Quantum" if r["KEM"].lower() in pre_kem and r["Signature"].lower() in pre_sig else
-        "Ibrido"), axis=1)
+        "Ibrido" if "_" in r["KEM"].strip() or "_" in r["Signature"].strip() else
+        "Post-Quantum" if r["KEM"].strip() in {"mlkem512","mlkem768","mlkem1024"} and 
+                          r["Signature"].strip() in {"mldsa44","mldsa65","mldsa87"} else
+        "Pre-Quantum" if r["KEM"].strip() in {"secp256r1","secp384r1","secp521r1"} and 
+                          r["Signature"].strip() in {"ecdsa-with-SHA256","ecdsa-with-SHA384","ecdsa-with-SHA512"} else
+        "Sconosciuto"), axis=1)
     df.to_csv(csv_path, index=False)
     print(f"✅ Aggiunta colonna 'algorithms' a {csv_path}")
 
+
+
 if __name__ == "__main__":
-    run_all_tests_randomized()
-    print(f"\n📊 Generazione medie e grafici per tutti i batch completati...")
-    process_all_batches_for_avg_per_request(input_folder, output_csv)
-    classify_algorithms_and_update_csv(output_csv)
-    generate_graphs_from_average_per_request()
-    generate_system_monitor_graph()
-    generate_server_performance_graphs()
+    #run_all_tests_randomized()
+    #print(f"\n📊 Generazione medie e grafici per tutti i batch completati...")
+    #process_all_batches_for_avg_per_request(input_folder, output_csv)
+    classify_algorithms_and_update_csv(output_csv_avg)
+    #generate_graphs_from_average_per_request()
+    #generate_system_monitor_graph()
+    #generate_server_performance_graphs()
+   
