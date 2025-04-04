@@ -301,8 +301,7 @@ def run_all_tests_randomized():
 def classify_algorithms_and_update_csv(csv_path):
     if not os.path.exists(csv_path): return
     df = pd.read_csv(csv_path)
-    if "algorithms" in df.columns: df.drop(columns="algorithms", inplace=True)
-    df["algorithms"] = df.apply(lambda r: (
+    df["Algorithms"] = df.apply(lambda r: (
         "Ibrido" if "_" in r["KEM"].strip() or "_" in r["Signature"].strip() else
         "Post-Quantum" if r["KEM"].strip() in {"mlkem512","mlkem768","mlkem1024"} and 
                           r["Signature"].strip() in {"mldsa44","mldsa65","mldsa87"} else
