@@ -5,8 +5,8 @@
 import json, subprocess, psutil, time, math, re, logging, os, random, csv, pandas as pd, numpy as np, matplotlib.pyplot as plt
 from collections import defaultdict
 
-sig_list, kem_list = ["ecdsa_p521", "mldsa87", "p521_mldsa87"], ["secp521r1", "mlkem1024", "p521_mlkem1024"]
-NUM_RUNS, TIMEOUT, SLEEP = 3, 300, 2
+sig_list, kem_list = ["ecdsa_p256", "mldsa44", "p256_mldsa44"], ["secp256r1", "mlkem512", "p256_mlkem512"]
+NUM_RUNS, TIMEOUT, SLEEP = 10, 300, 2
 CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE, SERVER_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv", r"--- Informazioni RAM ---"
 
