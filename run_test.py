@@ -297,10 +297,25 @@ def run_all_tests_randomized():
         run_single_test(replica)
     print("\n🎉 Tutti i test completati!")
 
+def classify_algorithms_and_update_csv(csv_path):
+    if not os.path.exists(csv_path): return
+    df = pd.read_csv(csv_path)
+    pq_kem = {"mlkem512", "mlkem768", "mlkem1024"}
+    pq_sig = {"mldsa44", "mldsa65", "mldsa87"}
+    pre_kem = {"secp256r1", "secp384r1", "secp521r1"}
+    pre_sig = {"ecdsa_p256", "ecdsa_p384", "ecdsa_p521"}
+    df["algorithms"] = df.apply(lambda r: (
+        "Post-Quantum" if r["KEM"].lower() in pq_kem and r["Signature"].lower() in pq_sig else
+        "Pre-Quantum" if r["KEM"].lower() in pre_kem and r["Signature"].lower() in pre_sig else
+        "Ibrido"), axis=1)
+    df.to_csv(csv_path, index=False)
+    print(f"✅ Aggiunta colonna 'algorithms' a {csv_path}")
+
 if __name__ == "__main__":
     run_all_tests_randomized()
     print(f"\n📊 Generazione medie e grafici per tutti i batch completati...")
     process_all_batches_for_avg_per_request(input_folder, output_csv)
+    classify_algorithms_and_update_csv(output_csv)
     generate_graphs_from_average_per_request()
     generate_system_monitor_graph()
     generate_server_performance_graphs()
