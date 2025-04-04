@@ -312,14 +312,11 @@ def classify_algorithms_and_update_csv(csv_path):
     df.to_csv(csv_path, index=False)
     print(f"✅ Aggiunta colonna 'algorithms' a {csv_path}")
 
-
-
 if __name__ == "__main__":
-    #run_all_tests_randomized()
-    #print(f"\n📊 Generazione medie e grafici per tutti i batch completati...")
-    #process_all_batches_for_avg_per_request(input_folder, output_csv)
+    run_all_tests_randomized()
+    print(f"\n📊 Generazione medie e grafici per tutti i batch completati...")
+    process_all_batches_for_avg_per_request(input_folder, output_csv)
     classify_algorithms_and_update_csv(output_csv_avg)
-    #generate_graphs_from_average_per_request()
-    #generate_system_monitor_graph()
-    #generate_server_performance_graphs()
-   
+    generate_graphs_from_average_per_request()
+    generate_system_monitor_graph()
+    generate_server_performance_graphs()  
