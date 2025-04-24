@@ -1,24 +1,3 @@
-# Inizializza OpenSSL con la configurazione specificata nella sezione [openssl_init]
-openssl_conf = openssl_init
-
-[openssl_init]
-# Specifica i provider crittografici da attivare (vedi [provider_sect])
-providers = provider_sect
-
-[provider_sect]
-# Abilita il provider predefinito (configurato in [default_sect])
-default = default_sect
-# Abilita il provider OQS per algoritmi post-quantistici (configurato in [oqsprovider_sect])
-oqsprovider = oqsprovider_sect
-
-[default_sect]
-# Attiva il provider predefinito
-activate = 1
-
-[oqsprovider_sect]
-# Attiva il provider OQS per abilitare algoritmi crittografici post-quantistici
-activate = 1
-
 [req]
 # Specifica la sezione per i dettagli del Distinguished Name (DN)
 distinguished_name = req_distinguished_name
