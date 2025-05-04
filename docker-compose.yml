@@ -32,7 +32,7 @@ services:
       - ./cert-generator/.env
     tty: true
     entrypoint: >
-      sh -c "/bin/sh /cert-generator/generate_certs.sh "
+      sh -c "/bin/sh /cert-generator/generate_certs.sh && tail -f /dev/null "
     networks:
       - custom_network
 
@@ -66,8 +66,6 @@ services:
       - pcap:/app/pcap
       - tls_keys:/tls_keys
       - ./client/start_client.py:/app/start_client.py
-    depends_on:
-      - nginx
     networks:
       - custom_network
     stdin_open: true
