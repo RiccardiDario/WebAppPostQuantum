@@ -41,7 +41,7 @@ services:
       context: ./nginx
     container_name: nginx_pq
     ports:
-      - "4433:4433"
+      - "443:443"
     volumes:
       - certs:/etc/nginx/certs/
       - ./report:/opt/nginx/output
@@ -86,6 +86,6 @@ services:
     stdin_open: true
     tty: true
     command: >
-      tshark -i any -f "tcp port 4433 and host 192.168.1.100" -w /pcap/capture.pcap
+      tshark -i any -f "tcp port 443 and host 192.168.1.100" -w /pcap/capture.pcap
       
-#wireshark -k -i any -f "tcp port 4433 and host 192.168.1.100" -w /pcap/capture.pcap      
+#wireshark -k -i any -f "tcp port 443 and host 192.168.1.100" -w /pcap/capture.pcap      
