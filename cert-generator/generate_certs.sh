@@ -9,7 +9,6 @@ EXTFILE="/tmp/ext.cnf"
 
 openssl_pkey() {
   case "$1" in
-    rsa-pss-*) openssl genrsa -out "$2" 4096 ;;
     ecdsa_p256) openssl ecparam -genkey -name prime256v1 -out "$2" ;;
     ecdsa_p384) openssl ecparam -genkey -name secp384r1 -out "$2" ;;
     ecdsa_p521) openssl ecparam -genkey -name secp521r1 -out "$2" ;;
@@ -23,11 +22,6 @@ sigopts() {
     ecdsa_p256) echo "-sha256" ;;
     ecdsa_p384) echo "-sha384" ;;
     ecdsa_p521) echo "-sha512" ;;
-    rsa-pss-sha256) echo "-sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 -sha256" ;;
-    rsa-pss-sha384) echo "-sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 -sha384" ;;
-    rsa-pss-sha512) echo "-sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 -sha512" ;;
-    rsa-pkcs1-sha256) echo "-sha256" ;;
-    rsa-pkcs1-sha512) echo "-sha512" ;;
     *) echo "" ;;
   esac
 }
