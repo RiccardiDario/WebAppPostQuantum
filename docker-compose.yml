@@ -27,9 +27,9 @@ services:
     volumes:
       - certs:/certs
       - ./cert-generator:/cert-generator
-    stdin_open: true
     env_file:
       - ./cert-generator/.env
+    stdin_open: true
     tty: true
     entrypoint: >
       sh -c "/bin/sh /cert-generator/generate_certs.sh && tail -f /dev/null "
