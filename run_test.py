@@ -75,10 +75,12 @@ def check_logs(container, pattern):
     return re.search(pattern, out) is not None if out else False
 
 def update_kem(kem):
-    with open(START_CLIENT_PATH, "r", encoding="utf-8") as f:
-        content = re.sub(r'("--curves",\s*")[^"]+(")', f'\\1{kem}\\2', f.read())
-    with open(START_CLIENT_PATH, "w", encoding="utf-8") as f: f.write(content)
-    print(f"✅ KEM: {kem}")
+    path = os.path.join(BASE_DIR, "docker-compose.yml")
+    with open(path, "r", encoding="utf-8") as f:
+        content = re.sub(r"(DEFAULT_GROUPS=)[^\s\n]+", f"\\1{kem}", f.read())
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"✅ KEM aggiornato in docker-compose.yml: {kem}")
 
 def update_sig(sig):
     with open(ENV_PATH, "r", encoding="utf-8") as f:

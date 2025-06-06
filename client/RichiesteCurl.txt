@@ -8,6 +8,9 @@ curl --tlsv1.3 --curves x25519_mlkem512 -k  https://nginx_pq:4433
 Effettua una richiesta HTTPS utilizzando TLS 1.3, verificando il certificato del server con una CA specifica
 curl --tlsv1.3 --cacert /opt/certs/CA.crt -v https://nginx_pq:4433
 
+python3 -c "import pycurl; from io import BytesIO; b = BytesIO(); c = pycurl.Curl(); c.setopt(c.URL, 'https://nginx_pq:443'); c.setopt(c.CAINFO, '/opt/certs/CA.crt'); c.setopt(c.SSLVERSION, c.SSLVERSION_TLSv1_3); c.setopt(c.VERBOSE, True); c.setopt(c.WRITEDATA, b); c.perform(); print('HTTP Response Code:', c.getinfo(c.RESPONSE_CODE)); print('Response body:\\n', b.getvalue().decode()); c.close()"
+
+
 Effettua una richiesta HTTPS utilizzando TLS 1.3 e un kem specifico kyber512 verificando il certificato del server
 curl --tlsv1.3 --curves mlkem512 --cacert /opt/certs/CA.crt -v https://nginx_pq:443
 

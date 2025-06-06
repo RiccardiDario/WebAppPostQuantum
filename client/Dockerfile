@@ -45,6 +45,23 @@ RUN env LDFLAGS="-Wl,-R${INSTALLDIR}/lib64" ./configure --prefix="${INSTALLDIR}"
 
 FROM alpine:${ALPINE_VERSION} AS final
 ARG INSTALLDIR
-RUN apk update && apk --no-cache add python3 py3-psutil py3-pandas tshark
+
+RUN apk update && apk --no-cache add \
+    python3 py3-pip py3-setuptools py3-wheel \
+    py3-psutil py3-pandas tshark \
+    build-base curl-dev libffi-dev openssl-dev \
+    musl-dev linux-headers python3-dev
+
 COPY --from=intermediate ${INSTALLDIR} ${INSTALLDIR}
-ENV PATH="${INSTALLDIR}/bin:${PATH}"
+ENV PATH="${INSTALLDIR}/bin:${PATH}" \
+    PYCURL_CURL_CONFIG=${INSTALLDIR}/bin/curl-config
+
+RUN pip install --no-binary :all: pycurl --break-system-packages
+
+COPY --from=intermediate ${INSTALLDIR}/bin/curl /usr/bin/curl
+COPY --from=intermediate ${INSTALLDIR}/lib/ /usr/lib/
+COPY --from=intermediate ${INSTALLDIR}/ssl /etc/ssl
+
+RUN cp -a ${INSTALLDIR}/lib64/libcurl.so* /usr/lib/ 2>/dev/null || true && \
+    cp -a ${INSTALLDIR}/lib64/libssl.so* /usr/lib/ 2>/dev/null || true && \
+    cp -a ${INSTALLDIR}/lib64/libcrypto.so* /usr/lib/ 2>/dev/null || true
