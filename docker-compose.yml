@@ -71,7 +71,7 @@ services:
     stdin_open: true
     tty: true
     environment:
-      - DEFAULT_GROUPS=secp256r1
+      - DEFAULT_GROUPS=p521_mlkem1024
       - SSLKEYLOGFILE=/tls_keys/tls-secrets.log
     entrypoint: ["/bin/sh", "-c", "sleep 3 && python3 /app/start_client.py  && tail -f /dev/null"]
 
