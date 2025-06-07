@@ -55,7 +55,6 @@ services:
         ipv4_address: 192.168.1.100
     entrypoint: ["/bin/sh", "-c", "nginx -c /opt/nginx/nginx.conf -g 'daemon off;' & sleep 1 && python3 /opt/nginx/start_server.py  && tail -f /dev/null"]
 
-
   client-analysis:
     build:
       context: ./client
@@ -87,6 +86,4 @@ services:
     stdin_open: true
     tty: true
     command: >
-      tshark -i any -f "tcp port 443 and host 192.168.1.100" -w /pcap/capture.pcap
-      
-#wireshark -k -i any -f "tcp port 443 and host 192.168.1.100" -w /pcap/capture.pcap      
+      tshark -i any -f "tcp port 443 and host 192.168.1.100" -w /pcap/capture.pcap   
