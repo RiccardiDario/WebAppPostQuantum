@@ -12,7 +12,6 @@ openssl_pkey() {
     ecdsa_p256) openssl ecparam -genkey -name prime256v1 -out "$2" ;;
     ecdsa_p384) openssl ecparam -genkey -name secp384r1 -out "$2" ;;
     ecdsa_p521) openssl ecparam -genkey -name secp521r1 -out "$2" ;;
-    ed25519|ed448) openssl genpkey -algorithm "$(echo "$1" | tr a-z A-Z)" -out "$2" ;;
     *) openssl genpkey -algorithm "$1" -out "$2" ;;
   esac
 }
@@ -36,7 +35,7 @@ openssl req -x509 -new -key "$CA_KEY" -out "$CA_CERT" -nodes -days 365 \
 
 openssl_pkey "$SIGNATURE_ALGO" "$SERVER_KEY"
 openssl req -new -key "$SERVER_KEY" -out "$SERVER_CSR" \
-  -subj "/CN=nginx_pq" \
+  -subj "/CN=192.168.1.100" \
   -addext "basicConstraints=critical,CA:FALSE" \
   -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
   -addext "extendedKeyUsage=serverAuth"

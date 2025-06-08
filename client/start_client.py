@@ -6,7 +6,7 @@ from io import BytesIO
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR, AVG_DIR = "/app/output/request_logs", "/app/output/system_logs", "/app/logs/", "/app/output/request_logs/avg/"
 for d in (OUTPUT_DIR, MONITOR_DIR, TRACE_LOG_DIR, AVG_DIR): os.makedirs(d, exist_ok=True)
-BASE_DOMAIN, NUM_REQUESTS, active_requests, active_requests_lock, global_stats = "nginx_pq", 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
+BASE_DOMAIN, NUM_REQUESTS, active_requests, active_requests_lock, global_stats = "192.168.1.100", 500, 0, Lock(), {"cpu_usage": [], "memory_usage": []}
 
 def get_next_filename(base_path, base_name, extension):
     counter = 1
@@ -47,16 +47,18 @@ def build_debug_callback(stream):
             stream.write(f"# Error in debug callback: {e}\n".encode())
     return debug_cb
 
-async def execute_request(req_num):
+def execute_request(req_num):
     global active_requests
     trace_file, kem, sig_alg, cert_size = f"{TRACE_LOG_DIR}trace_{req_num}.log", "Unknown", "Unknown", 0
-    async with asyncio.Lock(): active_requests += 1
+    with active_requests_lock:
+        active_requests += 1
     try:
         start = time.time()
         buffer, stderr_buf, c = BytesIO(), BytesIO(), pycurl.Curl()
-        for o, v in [(pycurl.URL, f"https://{BASE_DOMAIN}"), (pycurl.CAINFO, "/opt/certs/CA.crt"), (pycurl.SSLVERSION, pycurl.SSLVERSION_TLSv1_3), (pycurl.WRITEDATA, buffer),
-                     (pycurl.VERBOSE, True), (pycurl.DEBUGFUNCTION, build_debug_callback(stderr_buf))]: c.setopt(o, v)
-        c.perform(); elapsed = round((time.time() - start) * 1000, 3)
+        for o, v in [(pycurl.URL, f"https://{BASE_DOMAIN}"),(pycurl.CAINFO, "/opt/certs/CA.crt"), (pycurl.SSLVERSION, pycurl.SSLVERSION_TLSv1_3), (pycurl.WRITEDATA, buffer),
+            (pycurl.VERBOSE, True),(pycurl.DEBUGFUNCTION, build_debug_callback(stderr_buf))]: c.setopt(o, v)
+        c.perform()
+        elapsed = round((time.time() - start) * 1000, 3)
         conn = round(c.getinfo(c.CONNECT_TIME) * 1000, 3)
         hs = round(c.getinfo(c.APPCONNECT_TIME) * 1000, 3)
         total = round(c.getinfo(c.TOTAL_TIME) * 1000, 3)
@@ -64,14 +66,21 @@ async def execute_request(req_num):
         success = "Success" if status == "200" else "Failure"
         c.close()
         stderr = stderr_buf.getvalue().decode("iso-8859-1", errors="replace").splitlines()
-        with open(trace_file, "w", encoding="iso-8859-1") as f: f.write("\n".join(stderr))
-        sent = recv = 0; prev = ""
+        with open(trace_file, "w", encoding="iso-8859-1") as f:
+            f.write("\n".join(stderr))
+        sent = recv = 0
+        prev = ""
         for line in stderr:
-            if (m := re.search(r"(=> Send SSL data, (\d+)|Send header, (\d+))", line)): sent += int(m.group(2) or m.group(3))
-            if (m := re.search(r"(<= Recv SSL data, (\d+)|Recv header, (\d+)|Recv data, (\d+))", line)): recv += int(m.group(2) or m.group(3) or m.group(4))
-            if (m := re.search(r"SSL connection using TLSv1.3 / [^/]+ / (\S+) /", line)): kem = m.group(1)
-            if "signed using" in line and (m := re.search(r"signed using (\S+)", line)): sig_alg = m.group(1)
-            if "TLS handshake, Certificate (11):" in prev and (m := re.search(r"<= Recv SSL data, (\d+)", line)): cert_size = int(m.group(1))
+            if (m := re.search(r"(=> Send SSL data, (\d+)|Send header, (\d+))", line)):
+                sent += int(m.group(2) or m.group(3))
+            if (m := re.search(r"(<= Recv SSL data, (\d+)|Recv header, (\d+)|Recv data, (\d+))", line)):
+                recv += int(m.group(2) or m.group(3) or m.group(4))
+            if (m := re.search(r"SSL connection using TLSv1.3 / [^/]+ / (\S+) /", line)):
+                kem = m.group(1)
+            if "signed using" in line and (m := re.search(r"signed using (\S+)", line)):
+                sig_alg = m.group(1)
+            if "TLS handshake, Certificate (11):" in prev and (m := re.search(r"<= Recv SSL data, (\d+)", line)):
+                cert_size = int(m.group(1))
             prev = line
         logging.info(f"Richiesta {req_num}: {success} | Connessione={conn} ms, Handshake={hs} ms, Total_Time={total} ms, ElaspsedTime={elapsed} ms, Inviati={sent}, Ricevuti={recv}, HTTP={status}, KEM={kem}, Firma={sig_alg}, Cert_Size={cert_size} B")
         return [req_num, conn, hs, total, elapsed, success, sent, recv, kem, sig_alg, cert_size]
@@ -79,7 +88,42 @@ async def execute_request(req_num):
         logging.error(f"Errore richiesta {req_num}: {e}")
         return [req_num, None, None, None, None, "Failure", 0, 0, kem, sig_alg, cert_size]
     finally:
-        async with asyncio.Lock(): active_requests -= 1
+        with active_requests_lock:
+            active_requests -= 1
+
+# async def execute_request(req_num):
+#     global active_requests
+#     trace_file, kem, sig_alg, cert_size = f"{TRACE_LOG_DIR}trace_{req_num}.log", "Unknown", "Unknown", 0
+#     async with asyncio.Lock(): active_requests += 1
+#     try:
+#         start = time.time()
+#         buffer, stderr_buf, c = BytesIO(), BytesIO(), pycurl.Curl()
+#         for o, v in [(pycurl.URL, f"https://{BASE_DOMAIN}"), (pycurl.CAINFO, "/opt/certs/CA.crt"), (pycurl.SSLVERSION, pycurl.SSLVERSION_TLSv1_3), (pycurl.WRITEDATA, buffer),
+#                      (pycurl.VERBOSE, True), (pycurl.DEBUGFUNCTION, build_debug_callback(stderr_buf))]: c.setopt(o, v)
+#         c.perform(); elapsed = round((time.time() - start) * 1000, 3)
+#         conn = round(c.getinfo(c.CONNECT_TIME) * 1000, 3)
+#         hs = round(c.getinfo(c.APPCONNECT_TIME) * 1000, 3)
+#         total = round(c.getinfo(c.TOTAL_TIME) * 1000, 3)
+#         status = str(c.getinfo(c.RESPONSE_CODE))
+#         success = "Success" if status == "200" else "Failure"
+#         c.close()
+#         stderr = stderr_buf.getvalue().decode("iso-8859-1", errors="replace").splitlines()
+#         with open(trace_file, "w", encoding="iso-8859-1") as f: f.write("\n".join(stderr))
+#         sent = recv = 0; prev = ""
+#         for line in stderr:
+#             if (m := re.search(r"(=> Send SSL data, (\d+)|Send header, (\d+))", line)): sent += int(m.group(2) or m.group(3))
+#             if (m := re.search(r"(<= Recv SSL data, (\d+)|Recv header, (\d+)|Recv data, (\d+))", line)): recv += int(m.group(2) or m.group(3) or m.group(4))
+#             if (m := re.search(r"SSL connection using TLSv1.3 / [^/]+ / (\S+) /", line)): kem = m.group(1)
+#             if "signed using" in line and (m := re.search(r"signed using (\S+)", line)): sig_alg = m.group(1)
+#             if "TLS handshake, Certificate (11):" in prev and (m := re.search(r"<= Recv SSL data, (\d+)", line)): cert_size = int(m.group(1))
+#             prev = line
+#         logging.info(f"Richiesta {req_num}: {success} | Connessione={conn} ms, Handshake={hs} ms, Total_Time={total} ms, ElaspsedTime={elapsed} ms, Inviati={sent}, Ricevuti={recv}, HTTP={status}, KEM={kem}, Firma={sig_alg}, Cert_Size={cert_size} B")
+#         return [req_num, conn, hs, total, elapsed, success, sent, recv, kem, sig_alg, cert_size]
+#     except Exception as e:
+#         logging.error(f"Errore richiesta {req_num}: {e}")
+#         return [req_num, None, None, None, None, "Failure", 0, 0, kem, sig_alg, cert_size]
+#     finally:
+#         async with asyncio.Lock(): active_requests -= 1
 
 def convert_to_bytes(value, unit):
     unit = unit.lower()
@@ -117,7 +161,7 @@ def analyze_pcap():
                     fields = line.split("\t")
                     if len(fields) >= 6:
                         dst_ip, frame_size = fields[2], int(fields[4])
-                        if dst_ip == "192.168.1.100": tls_upload_bytes += frame_size
+                        if dst_ip == BASE_DOMAIN: tls_upload_bytes += frame_size
                         else: tls_download_bytes += frame_size
                 except ValueError: continue
 
@@ -219,11 +263,18 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
     start_time = time.time()
     request_results = []  
     try:
-        request_results = asyncio.run(run_all())
+        for i in range(NUM_REQUESTS):
+            result = execute_request(i + 1)
+            request_results.append(result)
+            #Decommentare per avere le richieste parallele, commentando le tre righe superiori
+        #with ThreadPoolExecutor(max_workers=NUM_REQUESTS) as executor:
+            #futures = [executor.submit(execute_request, i + 1) for i in range(NUM_REQUESTS)]  
+            #for future in as_completed(futures): request_results.append(future.result()) 
+            #Per asyncio decoomentare quest'utlima riga e l'intera funzione commentata
+            #request_results = asyncio.run(run_all())
     finally:
         monitor_thread.join()
         end_time = time.time()
-
     kem_used  = next((r[8] for r in request_results if r[8] != "Unknown"), "Unknown")
     sig_used = next((r[9] for r in request_results if r[9] != "Unknown"), "Unknown")
     pd.read_csv(MONITOR_FILE).assign(KEM=kem_used, Signature=sig_used).to_csv(MONITOR_FILE, index=False)
@@ -232,6 +283,5 @@ with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         request_number = result[0]
         if result[5] == "Success": success_count += 1
         writer.writerow(result[:6] + [f"{success_count}/{NUM_REQUESTS}"] + result[6:])
-
 update_average_report(request_results)
 logging.info(f"Test completato in {end_time - start_time:.2f} secondi. Report: {OUTPUT_FILE}")
