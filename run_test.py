@@ -11,7 +11,7 @@ CLIENT, SERVER = "client_analysis", "nginx_pq"
 CLIENT_DONE, SERVER_DONE = r"\[INFO\] Test completato in .* Report: /app/output/request_logs/request_client\d+\.csv", r"--- Informazioni RAM ---"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-START_CLIENT_PATH, ENV_PATH, SHARED_VOLUMED_PATH = os.path.join(BASE_DIR, "client/start_client.py"), os.path.join(BASE_DIR, "cert-generator/.env"), os.path.join(BASE_DIR, "shared_plan")
+docker_compose_path, SHARED_VOLUMED_PATH = os.path.join(BASE_DIR, "docker-compose.yml"), os.path.join(BASE_DIR, "shared_plan")
 output_csv = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics_per_request.csv")
 output_csv_avg = os.path.join(BASE_DIR, "report/request_logs/avg/average_metrics.csv")
 GRAPH_DIR, FILTERED_LOG_DIR = os.path.join(BASE_DIR, "report/graph"), os.path.join(BASE_DIR, "report/filtered_logs")
@@ -75,17 +75,17 @@ def check_logs(container, pattern):
     return re.search(pattern, out) is not None if out else False
 
 def update_kem(kem):
-    path = os.path.join(BASE_DIR, "docker-compose.yml")
-    with open(path, "r", encoding="utf-8") as f:
+    with open(docker_compose_path, "r", encoding="utf-8") as f:
         content = re.sub(r"(DEFAULT_GROUPS=)[^\s\n]+", f"\\1{kem}", f.read())
-    with open(path, "w", encoding="utf-8") as f:
+    with open(docker_compose_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"✅ KEM aggiornato in docker-compose.yml: {kem}")
+    print(f"✅ KEM: {kem}")
 
 def update_sig(sig):
-    with open(ENV_PATH, "r", encoding="utf-8") as f:
-        lines = [f"SIGNATURE_ALGO={sig}\n" if l.startswith("SIGNATURE_ALGO=") else l for l in f]
-    with open(ENV_PATH, "w", encoding="utf-8") as f: f.writelines(lines)
+    with open(docker_compose_path, "r", encoding="utf-8") as f:
+        content = re.sub(r"(SIGNATURE_ALGO=)[^\s\n]+", f"\\1{sig}", f.read())
+    with open(docker_compose_path, "w", encoding="utf-8") as f:
+        f.write(content)
     print(f"✅ Signature: {sig}")
 
 def run_single_test(i):

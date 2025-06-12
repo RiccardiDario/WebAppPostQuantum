@@ -27,8 +27,8 @@ services:
     volumes:
       - certs:/certs
       - ./cert-generator:/cert-generator
-    env_file:
-      - ./cert-generator/.env
+    environment:
+      - SIGNATURE_ALGO=ecdsa_p256
     stdin_open: true
     tty: true
     entrypoint: >
@@ -70,7 +70,7 @@ services:
     stdin_open: true
     tty: true
     environment:
-      - DEFAULT_GROUPS=mlkem1024
+      - DEFAULT_GROUPS=secp256r1
       - SSLKEYLOGFILE=/tls_keys/tls-secrets.log
     entrypoint: ["/bin/sh", "-c", "sleep 3 && python3 /app/start_client.py  && tail -f /dev/null"]
 
