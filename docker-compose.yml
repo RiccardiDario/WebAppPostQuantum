@@ -28,7 +28,7 @@ services:
       - certs:/certs
       - ./cert-generator:/cert-generator
     environment:
-      - SIGNATURE_ALGO=p256_mldsa44
+      - SIGNATURE_ALGO=mldsa44
     stdin_open: true
     tty: true
     entrypoint: >
@@ -70,7 +70,7 @@ services:
     stdin_open: true
     tty: true
     environment:
-      - DEFAULT_GROUPS=p256_mlkem512
+      - DEFAULT_GROUPS=mlkem512
       - SSLKEYLOGFILE=/tls_keys/tls-secrets.log
     entrypoint: ["/bin/sh", "-c", "sleep 3 && python3 /app/start_client.py  && tail -f /dev/null"]
 
